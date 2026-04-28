@@ -20,8 +20,28 @@ using namespace std;
 struct Particle{
     vec2 pos;
     int charge;
-    Particle(vec3 pos ,int charge) : pos(pos), charge(charge) {}
+    Particle(vec2 pos ,int charge) : pos(pos), charge(charge) {}
+
+    void draw(int segments = 50){
+        float r;
+        if (charge == -1 ) r = 2 ;
+        else r = 10;
+
+        glBegin(GL_TRIANGLE_FAN);
+        glVertex2f(pos.x , pos.y);
+        for (int i = 0 ; i <= segments ; i++){
+            float angle = 2.0f * M_PI * i/segments;
+            float x = cos(angle) * r;
+            float y = sin(angle) * r;
+            glVertex2f(x + pos.x , y + pos.y);
+        }
+        
+        glEnd();
+
+    }
 };
+
+Particle p = Particle(vec2(0.0) , 1);
 
 
 struct Engine {
