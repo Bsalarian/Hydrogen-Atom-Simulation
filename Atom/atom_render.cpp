@@ -24,12 +24,28 @@ struct Particle{
     float angle;
     Particle(vec2 pos ,int charge) : pos(pos), charge(charge), angle(0.0f) {}
 
-    void draw(int segments = 50){
+    void draw(vec2 center, int segments = 50){
+        
+
+
         float r;
         if (charge == -1 ) {
-            r = 2 ;
+            r = 4 ;
             glColor3f(0.0f , 1.0f, 1.0f );
-        } 
+            //outline for the electrons
+            glLineWidth(0.4f);
+            glBegin(GL_LINE_LOOP);
+            glColor3f(0.4f,0.4f,0.4f);
+
+            for (int i = 0 ; i <= segments ; i++){
+                float angle = 2.0f * M_PI * i/segments;
+                float x = cos(angle) * orbitDistance;
+                float y = sin(angle) * orbitDistance;
+                glVertex2f(x + center.x , y + center.y);
+            }
+            
+            glEnd(); 
+} 
         else if (charge == 1) {
             r = 10;
             glColor3f(1.0f , 0.0f, 0.0f );
@@ -51,7 +67,7 @@ struct Particle{
 
     }
     void update () {
-        angle += 0.001;
+        angle += 0.005;
         pos.x = cos(angle) * orbitDistance;
         pos.y = sin(angle) * orbitDistance;
     }
@@ -62,6 +78,25 @@ vector<Particle> particles = {
     Particle(vec2(-50.0f , 0.0f) , -1)
 };
 
+struct Atom {
+
+    vec2 pos;
+    vector<Particle> particles = {
+        Particle(pos, 1 ),
+        Particle(pos , -1)
+    };
+
+    Atom (vec2 pos) : pos(pos) {}
+
+
+};
+
+vector<Atom> atoms {
+        Atom(vec2(0.0f))
+};
+
+
+
 
 struct Engine {
 
@@ -71,7 +106,7 @@ struct Engine {
     Engine () {
         // --- Init GLFW ---
         if (!glfwInit()) {
-            cerr << "failed to init glfw, LOL";
+            cerr << "failed to init glfw";
             exit(EXIT_FAILURE);
         }
 
@@ -111,13 +146,18 @@ int main() {
 
         glfwPollEvents();
         engine.run();
-        glClear(GL_COLOR_BUFFER_BIT);     
-        for ( Particle& p : particles) {
-            p.draw();
-            if (p.charge == -1) {
-                p.update();
+        glClear(GL_COLOR_BUFFER_BIT);    
+        
+        for (Atom &a : atoms){
+            for ( Particle& p : a.particles) {
+                p.draw(a.pos);
+                if (p.charge == -1) {
+                    p.update();
+                }
             }
         }
+
+
         glfwSwapBuffers(engine.window);
     }
 
