@@ -22,6 +22,7 @@ struct Particle{
     vec2 pos;
     int charge;
     float angle;
+    int n = 1;
     Particle(vec2 pos ,int charge) : pos(pos), charge(charge), angle(0.0f) {}
 
     void draw(vec2 center, int segments = 50){
@@ -66,10 +67,12 @@ struct Particle{
         glEnd();
 
     }
-    void update () {
+    void update (vec2 c) {
+        float r = n * orbitDistance;
+
         angle += 0.005;
-        pos.x = cos(angle) * orbitDistance;
-        pos.y = sin(angle) * orbitDistance;
+        pos.x = c.x + cos(angle) * orbitDistance;
+        pos.y = c.y + sin(angle) * orbitDistance;
     }
 };
 
@@ -81,18 +84,17 @@ vector<Particle> particles = {
 struct Atom {
 
     vec2 pos;
-    vector<Particle> particles = {
+    vector<Particle> particles;
+
+    Atom(vec2 pos) : pos(pos) , particles ({
         Particle(pos, 1 ),
         Particle(pos , -1)
-    };
-
-    Atom (vec2 pos) : pos(pos) {}
-
-
+    }) {}
 };
 
 vector<Atom> atoms {
-        Atom(vec2(0.0f))
+        Atom(vec2(0.0f)),
+        Atom(vec2(-200.0f, 0.0f))
 };
 
 
@@ -152,7 +154,7 @@ int main() {
             for ( Particle& p : a.particles) {
                 p.draw(a.pos);
                 if (p.charge == -1) {
-                    p.update();
+                    p.update(a.pos);
                 }
             }
         }
