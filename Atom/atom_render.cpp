@@ -70,7 +70,7 @@ struct Particle{
     void update (vec2 c) {
         float r = n * orbitDistance;
 
-        angle += 0.005;
+        angle += 0.01;
         pos.x = c.x + cos(angle) * orbitDistance;
         pos.y = c.y + sin(angle) * orbitDistance;
     }
@@ -79,6 +79,37 @@ struct Particle{
 vector<Particle> particles = {
     Particle(vec2(0.0f) , 1 ),
     Particle(vec2(-50.0f , 0.0f) , -1)
+};
+
+struct WavePoint { vec2 localPos; vec2 dir;  };
+struct Wave{
+    vec2 pos, dir;
+    float energy, wavelength , frequency;
+    float sigma = 40.0f, k = 0.4f, phase = 0.0f, a = 10.0f, angleR;
+    vector<WavePoint> points;
+
+    Wave(float e , vec2 pos , vec2 dir): energy(e) , pos(pos) , dir(dir) {
+        dir = normalize(dir);
+        for (float x = -sigma; x<= sigma; x+= 0.1f )
+            points.push_back({ pos + x*dir , dir*200.0f});
+        angleR = atan2(dir.y, dir.x);
+    }
+
+    void draw() {
+
+        glBegin(GL_LINE_STRIP);
+        for (WavePoint& p: points){
+            vec2 perp(-p.dir.y , p.dir.x);
+            perp = normalize(perp);
+            // -- https://chem.libretexts.org/Bookshelves/Physical_and_Theoretical_Chemistry_Textbook_Maps/Physical_Chemistry_(LibreTexts)/02%3A_The_Classical_Wave_Equation/2.01%3A_The_One-Dimensional_Wave_Equation
+            // -- A(x,t) = A_o \sin (kx - \omega t + \phi) -- 
+            float y_disp = a * sin (k*length(p.localPos) - phase);
+            vec2 drawPos = p.localPos + perp * y_disp;
+            glVertex2f(drawPos.x, drawPos.y);
+        }
+        glEnd();
+
+    }
 };
 
 struct Atom {
