@@ -21,7 +21,7 @@ float orbitDistance = 50.0f;
 struct Engine {
 
     GLFWwindow* window;
-    int WIDTH = 800 , HEIGHT = 600;
+    int WIDTH = 1600 , HEIGHT = 1200;
 
     Engine () {
         // --- Init GLFW ---
@@ -72,7 +72,7 @@ struct Particle{
 
         float r;
         if (charge == -1 ) {
-            r = 2 ;
+            r = 4 ;
             glColor3f(0.0f , 1.0f, 1.0f );
             //outline for the electrons
             glLineWidth(0.4f);
@@ -128,7 +128,9 @@ struct Wave{
     float energy, wavelength , frequency;
     float sigma = 40.0f, k = 0.4f, phase = 0.0f, a = 10.0f, angleR;
     vector<WavePoint> points;
+    bool absorbed = false; 
 
+    
     Wave(float e , vec2 pos , vec2 dir): energy(e) , pos(pos) , dir(dir) {
         dir = normalize(dir);
         for (float x = -sigma; x<= sigma; x+= 0.1f )
@@ -169,7 +171,6 @@ struct Wave{
    }
 };
 vector<Wave> waves {
-
 };
 
 
@@ -185,8 +186,15 @@ struct Atom {
 };
 
 vector<Atom> atoms {
-        Atom(vec2(0.0f)),
-        Atom(vec2(-200.0f, 0.0f))
+    Atom(vec2(0.0f , 250.f)),
+    Atom(vec2(0.0f , 200.f)),
+    Atom(vec2(0.0f , 150.f)),
+    Atom(vec2(0.0f , 100.f)),
+    Atom(vec2(0.0f , 50.f)),
+    Atom(vec2(0.0f , 0.0f)),
+    Atom(vec2(0.0f , -50.f)),
+    Atom(vec2(0.0f , -100.f)),
+    Atom(vec2(0.0f , -150.f)),
 };
 
 
@@ -195,11 +203,23 @@ vector<Atom> atoms {
 
 int main() {
 
+    // Initialize 20 atoms in a circle at the center
+    // {
+    //     int num_atoms = 5;
+    //     float radius = 150.0f; // Radius of the circle
+    //     for (int i = 0; i < num_atoms; i++) {
+    //         float angle = 2.0f * M_PI * i / num_atoms;
+    //         float x = cos(angle) * radius;
+    //         float y = sin(angle) * radius;
+    //         atoms.emplace_back(vec2(x, y));
+    //     }
+    // }
+
     
     float energyN1toN2 = -13.6f - (-13.6f/(2*2));
 
     for (int i = 0; i < 10; i++) {
-        waves.push_back(Wave(energyN1toN2, vec2(400, i*10), vec2(-1.0f, 0.0f)));
+        waves.push_back(Wave(energyN1toN2, vec2(400, i*50 -50 ), vec2(-1.0f, 0.0f)));
     }
 
 
@@ -207,7 +227,6 @@ int main() {
 
         glfwPollEvents();
         engine.run();
-        glClear(GL_COLOR_BUFFER_BIT);    
         
         for (Atom &a : atoms){
             for ( Particle& p : a.particles) {
@@ -215,33 +234,32 @@ int main() {
                 // --- electrons --- 
                 if (p.charge == -1) {
                     p.update(a.pos);
-
+                    bool hit = false;
                     for (Wave& w: waves) { 
+                        if (w.energy == 0.0f) continue;
                         for (WavePoint& wp : w.points){
-                        float dist = length(vec2((p.pos.x, p.pos.y) - wp.localPos ));
-                        // --- photon hits the atom ---
-                        if ( dist < 20) {
-                            w.energy = 0.0f; // delete the wave
-                            p.n += 1; // update energy level
-                            break;
+                            float dist = length(p.pos - wp.localPos);
+                            // --- photon hits the atom ---
+                            if ( dist < 20) {
+                                w.energy == 0.0f;
+                                p.n += 1; // update energy level
+                                hit = true;
+                                break;
                         }
                     }
-                        
-                    }
+                    if (hit) break;
                 }
-            }
-        
-            for (Wave& w: waves){
-                if (w.energy == 0.0f ) continue;
-                w.draw();
-                w.update(0.01f);
             }
         }
 
-
-        glfwSwapBuffers(engine.window);
+            for (Wave& w: waves){
+                if (w.energy == 0.0f) continue;
+                w.draw();
+                w.update(0.001f);
+            }
     }
-
+    glfwSwapBuffers(engine.window);
+}
     glfwTerminate();
     return 0;
 }
