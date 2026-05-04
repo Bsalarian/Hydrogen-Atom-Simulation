@@ -72,8 +72,6 @@ struct Particle{
 
         float r;
         if (charge == -1 ) {
-            r = 4 ;
-            glColor3f(0.0f , 1.0f, 1.0f );
             //outline for the electrons
             glLineWidth(0.4f);
             glBegin(GL_LINE_LOOP);
@@ -85,17 +83,12 @@ struct Particle{
                 float y = sin(angle) * n * orbitDistance;
                 glVertex2f(x + center.x , y + center.y);
             }
-            
             glEnd(); 
-} 
-        else if (charge == 1) {
-            r = 10;
-            glColor3f(1.0f , 0.0f, 0.0f );
-        }
-        else {
-            glColor3f(0.5f , 0.5f, 0.5f );
-        }
+        } 
 
+        if (charge == -1)       { r = 4; glColor3f(0.0f, 1.0f, 1.0f); } 
+        else if (charge == 1)   { r = 8; glColor3f(1.0f, 0.0f, 0.0f); } 
+        else                    { r = 8; glColor3f(0.5f, 0.5f, 0.5f); }
         glBegin(GL_TRIANGLE_FAN);
         glVertex2f(pos.x , pos.y);
         for (int i = 0 ; i <= segments ; i++){
@@ -241,7 +234,7 @@ int main() {
                             float dist = length(p.pos - wp.localPos);
                             // --- photon hits the atom ---
                             if ( dist < 20) {
-                                w.energy == 0.0f;
+                                w.energy = 0.0f;
                                 p.n += 1; // update energy level
                                 hit = true;
                                 break;
