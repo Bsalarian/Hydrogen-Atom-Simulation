@@ -195,6 +195,36 @@ vector<Atom> atoms {
     Atom(vec2(0.0f , -150.f)),
 };
 
+
+void mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
+    if (action != GLFW_PRESS) return;
+
+    double xpos, ypos;
+    glfwGetCursorPos(window, &xpos, &ypos);
+
+    // Convert Screen Pixels to World Coordinates
+    // Screen (0,0) is top-left. World (0,0) is center.
+    float worldX = (float)xpos - (engine.WIDTH / 2.0f);
+    float worldY = (engine.HEIGHT / 2.0f) - (float)ypos;
+    vec2 mousePos(worldX, worldY);
+
+    if (button == GLFW_MOUSE_BUTTON_LEFT) {
+        // Spawn a burst of 8 photons in a circle
+        float energy1to2 = (-13.6f / 4.0f) - (-13.6f);
+        for (int i = 0; i < 8; i++) {
+            float angle = i * (2.0f * M_PI / 8.0f);
+            vec2 dir(cos(angle), sin(angle));
+            waves.emplace_back(energy1to2, mousePos, dir, vec3(0.0f, 1.0f, 1.0f));
+        }
+        cout << "Spawned photons at: " << worldX << ", " << worldY << endl;
+    } 
+    else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
+        // Place a new Atom
+        atoms.emplace_back(mousePos);
+        cout << "Placed atom at: " << worldX << ", " << worldY << endl;
+    }
+}
+
 int main() {
 
     // Initialize 20 atoms in a circle at the center
@@ -218,6 +248,7 @@ int main() {
 
         glfwPollEvents();
         engine.run();
+        glfwSetMouseButtonCallback(engine.window, mouse_button_callback);
         
         for (Atom &a : atoms){
             for ( Particle& p : a.particles) {
