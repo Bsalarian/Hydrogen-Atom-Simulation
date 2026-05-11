@@ -59,72 +59,16 @@ struct Engine {
 };
 Engine engine;
 
-struct Particle{
-    vec2 pos;
-    int charge;
-    float angle;
-    int n = 1;
-    Particle(vec2 pos ,int charge) : pos(pos), charge(charge), angle(0.0f) {}
-
-    void draw(vec2 center, int segments = 50){
-        
-
-
-        float r;
-        if (charge == -1 ) {
-            //outline for the electrons
-            glLineWidth(0.4f);
-            glBegin(GL_LINE_LOOP);
-            glColor3f(0.4f,0.4f,0.4f);
-
-            for (int i = 0 ; i <= segments ; i++){
-                float angle = 2.0f * M_PI * i/segments;
-                float x = cos(angle) * n * orbitDistance;
-                float y = sin(angle) * n * orbitDistance;
-                glVertex2f(x + center.x , y + center.y);
-            }
-            glEnd(); 
-        } 
-
-        if (charge == -1)       { r = 4; glColor3f(0.0f, 1.0f, 1.0f); } 
-        else if (charge == 1)   { r = 8; glColor3f(1.0f, 0.0f, 0.0f); } 
-        else                    { r = 8; glColor3f(0.5f, 0.5f, 0.5f); }
-        glBegin(GL_TRIANGLE_FAN);
-        glVertex2f(pos.x , pos.y);
-        for (int i = 0 ; i <= segments ; i++){
-            float angle = 2.0f * M_PI * i/segments;
-            float x = cos(angle) * r;
-            float y = sin(angle) * r;
-            glVertex2f(x + pos.x , y + pos.y);
-        }
-        
-        glEnd();
-
-    }
-    void update (vec2 c) {
-        float r = n * orbitDistance;
-
-        angle += 0.01;
-        pos.x = c.x + cos(angle) * r;
-        pos.y = c.y + sin(angle) * r;
-    }
-};
-
-vector<Particle> particles = {
-    Particle(vec2(0.0f) , 1 ),
-    Particle(vec2(-50.0f , 0.0f) , -1)
-};
-
 struct WavePoint { vec2 localPos; vec2 dir;  };
 struct Wave{
     vec2 pos, dir;
     float energy, wavelength , frequency;
     float sigma = 40.0f, k = 0.4f, phase = 0.0f, a = 10.0f, angleR;
     vector<WavePoint> points;
-    bool absorbed = false; 
+    vec3 col;
 
     
-    Wave(float e , vec2 pos , vec2 dir): energy(e) , pos(pos) , dir(dir) {
+    Wave(float e , vec2 pos , vec2 dir , vec3 col = vec3(0.0f,1.0f,1.0f)): energy(e) , pos(pos) , dir(dir), col(col) {
         dir = normalize(dir);
         for (float x = -sigma; x<= sigma; x+= 0.1f )
             points.push_back({ pos + x*dir , dir*200.0f});
@@ -133,6 +77,8 @@ struct Wave{
 
     void draw() {
 
+        glColor3f(col.r, col.g, col.b);
+        glLineWidth(2.0f);
         glBegin(GL_LINE_STRIP);
         for (WavePoint& p: points){
             vec2 perp(-p.dir.y , p.dir.x);
@@ -149,22 +95,81 @@ struct Wave{
 
     bool update(float dt) {
        phase += 30.0f * dt; // continuous phase
-
-
-       for (WavePoint& p : points) {
-           // move along velocity
-           p.localPos += p.dir * dt;
-
-
-            if (p.localPos.x < -engine.WIDTH/2.0f || p.localPos.x > engine.WIDTH/2.0f || p.localPos.y < -engine.HEIGHT/2.0f || p.localPos.y > engine.HEIGHT/2.0f) {
-                return true;
-            }
-       }
-       return false;
+        for (WavePoint& p : points) {
+            p.localPos += p.dir * dt;
+        }
+        
+        // Return true if the center of the wave is off-screen
+       return (length(points[points.size()/2].localPos) > 1000.0f);
    }
 };
 vector<Wave> waves {
 };
+struct Particle{
+    vec2 pos;
+    int charge;
+    float angle;
+    int n = 1;
+    float excitedTimer = 0.0f; 
+    Particle(vec2 pos ,int charge) : pos(pos), charge(charge), angle(0.0f) {}
+    
+    void draw(vec2 center, int segments = 50){
+        float r;
+        if (charge == -1 ) {
+            //outline for the electrons
+            glLineWidth(0.4f);
+            glBegin(GL_LINE_LOOP);
+            glColor3f(0.4f,0.4f,0.4f);
+            for (int i = 0 ; i <= segments ; i++){
+                float angle = 2.0f * M_PI * i/segments;
+                float x = cos(angle) * n * orbitDistance;
+                float y = sin(angle) * n * orbitDistance;
+                glVertex2f(x + center.x , y + center.y);
+            }
+            glEnd(); 
+        } 
+        if (charge == -1)       { r = 4; glColor3f(0.0f, 1.0f, 1.0f); } 
+        else if (charge == 1)   { r = 8; glColor3f(1.0f, 0.0f, 0.0f); } 
+        else                    { r = 8; glColor3f(0.5f, 0.5f, 0.5f); }
+        glBegin(GL_TRIANGLE_FAN);
+        glVertex2f(pos.x , pos.y);
+        for (int i = 0 ; i <= segments ; i++){
+            float angle = 2.0f * M_PI * i/segments;
+            float x = cos(angle) * r;
+            float y = sin(angle) * r;
+            glVertex2f(x + pos.x , y + pos.y);
+        }
+        glEnd();
+    }
+    void update (vec2 c) {
+        float r = n * orbitDistance;
+        angle += 0.05;
+        pos = vec2(c.x + cos(angle) * r , c.y + sin(angle) * r );
+    
+    // If we are excited (n > 1) and the timer runs out, emit!
+    if (n > 1 && excitedTimer <= 0.0f) {
+        float energyDiff = (-13.6f / (n * n)) - (-13.6f / ((n - 1) * (n - 1)));
+
+
+        // Random direction for emission
+        float randAngle = (rand() % 360) * (M_PI / 180.0f);
+        vec2 emitDir(cos(randAngle), sin(randAngle));
+
+        waves.emplace_back(abs(energyDiff), pos, emitDir, vec3(1.0f, 1.0f, 0.0f));
+
+        n--;
+        excitedTimer += 0.003f;
+    }
+        
+    }
+};
+
+vector<Particle> particles = {
+    Particle(vec2(0.0f) , 1 ),
+    Particle(vec2(-50.0f , 0.0f) , -1)
+};
+
+
 
 
 struct Atom {
@@ -190,10 +195,6 @@ vector<Atom> atoms {
     Atom(vec2(0.0f , -150.f)),
 };
 
-
-
-
-
 int main() {
 
     // Initialize 20 atoms in a circle at the center
@@ -207,14 +208,11 @@ int main() {
     //         atoms.emplace_back(vec2(x, y));
     //     }
     // }
-
     
-    float energyN1toN2 = -13.6f - (-13.6f/(2*2));
-
+    float energy1to2 = (-13.6f / 4.0f) - (-13.6f);
     for (int i = 0; i < 10; i++) {
-        waves.push_back(Wave(energyN1toN2, vec2(400, i*50 -50 ), vec2(-1.0f, 0.0f)));
+        waves.push_back(Wave(energy1to2, vec2(400, i*50 -50 ), vec2(-1.0f, 0.0f)));
     }
-
 
     while (!glfwWindowShouldClose(engine.window)) {
 
@@ -226,33 +224,46 @@ int main() {
                 p.draw(a.pos);
                 // --- electrons --- 
                 if (p.charge == -1) {
+                    if (p.excitedTimer > 0.0f) p.excitedTimer -= 0.01f;
                     p.update(a.pos);
-                    bool hit = false;
+
+                    float energyforUp = (-13.6f / ((p.n + 1) * (p.n + 1))) - (-13.6f / (p.n * p.n));
                     for (Wave& w: waves) { 
-                        if (w.energy == 0.0f) continue;
+                        if (w.energy <= 0.0f || w.col == vec3(1.0f, 1.0f, 0.0f)) continue;
                         for (WavePoint& wp : w.points){
                             float dist = length(p.pos - wp.localPos);
+                            
                             // --- photon hits the atom ---
-                            if ( dist < 20) {
-                                w.energy = 0.0f;
-                                p.n += 1; // update energy level
-                                hit = true;
+                            if (length(p.pos - w.points[w.points.size()/2].localPos) < 30.0f) {
+                                if (abs(w.energy - energyforUp) < 0.1f) {
+                                w.energy = 0.0f; 
+                                p.n++;
+                                p.excitedTimer = 1.0f; // Stay excited for a bit
                                 break;
-                        }
+                            }
                     }
-                    if (hit) break;
                 }
             }
         }
-
-            for (Wave& w: waves){
-                if (w.energy == 0.0f) continue;
-                w.draw();
-                w.update(0.001f);
-            }
+    }}
+    // Starts a pointer at the first photon , 
+    for (auto it = waves.begin(); it != waves.end();){
+        if (it->energy <= 0.0f) {
+            it = waves.erase(it); // remove absorbed photon. removes the photon and returns a new pointer to the very next item.
+            continue;
+        }
+        it->draw();
+        if (it->update(0.03f)) { // if update returns true, it's off-screen
+            it = waves.erase(it);
+            } 
+        else {
+         ++it;
+        }
     }
-    glfwSwapBuffers(engine.window);
-}
+
+        glfwSwapBuffers(engine.window);
+        glfwPollEvents();
+    }
     glfwTerminate();
     return 0;
 }
