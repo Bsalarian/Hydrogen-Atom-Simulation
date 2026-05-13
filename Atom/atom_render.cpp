@@ -197,15 +197,15 @@ struct Atom {
 };
 
 vector<Atom> atoms {
-    // Atom(vec2(0.0f , 250.f)),
-    // Atom(vec2(0.0f , 200.f)),
-    // Atom(vec2(0.0f , 150.f)),
-    // Atom(vec2(0.0f , 100.f)),
+    Atom(vec2(0.0f , 250.f)),
+    Atom(vec2(0.0f , 200.f)),
+    Atom(vec2(0.0f , 150.f)),
+    Atom(vec2(0.0f , 100.f)),
     Atom(vec2(0.0f , 50.f)),
-    // Atom(vec2(0.0f , 0.0f)),
-    // Atom(vec2(0.0f , -50.f)),
-    // Atom(vec2(0.0f , -100.f)),
-    // Atom(vec2(0.0f , -150.f)),
+    Atom(vec2(0.0f , 0.0f)),
+    Atom(vec2(0.0f , -50.f)),
+    Atom(vec2(0.0f , -100.f)),
+    Atom(vec2(0.0f , -150.f)),
 };
 
 
@@ -254,6 +254,35 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
     }
 }
 
+void drawHUD() {
+    // find first electron
+    float n_c = 1.0f, orb = 1.0f;
+    int n = 1;
+    for (Atom& a : atoms) {
+        for (Particle& p : a.particles) {
+            if (p.charge == -1) {
+                n_c = p.n_continuous;
+                orb = p.orbitScale;
+                n = p.n;
+                goto found;
+            }
+        }
+    }
+    found:
+
+    // check if wave closes perfectly
+    float remainder = fmod(n_c, 1.0f);
+    bool isQuantized = (remainder < 0.05f || remainder > 0.95f);
+
+    // draw text via window title (simple, no font library needed)
+    char title[256];
+    snprintf(title, sizeof(title),
+        "n_continuous: %.2f | shell (orbitScale): %.0f | n: %d | %s  [UP/DOWN = oscillations, LEFT/RIGHT = shell]",
+        n_c, orb, n,
+        isQuantized ? "*** STANDING WAVE ***" : "wave broken"
+    );
+    glfwSetWindowTitle(engine.window, title);
+}
 
 int main() {
 
@@ -327,6 +356,7 @@ int main() {
     }
 
         glfwSwapBuffers(engine.window);
+        drawHUD();
         glfwPollEvents();
     }
     glfwTerminate();
