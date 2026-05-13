@@ -109,6 +109,7 @@ struct Particle{
     vec2 pos;
     int charge;
     float angle;
+    float energy = -13.6f;
     int n = 1;
     float excitedTimer = 0.0f; 
     Particle(vec2 pos ,int charge) : pos(pos), charge(charge), angle(0.0f) {}
@@ -117,13 +118,20 @@ struct Particle{
         float r;
         if (charge == -1 ) {
             //outline for the electrons
+            segments = 5000;
             glLineWidth(0.4f);
             glBegin(GL_LINE_LOOP);
             glColor3f(0.4f,0.4f,0.4f);
+
+            float numOsolations = -13.6f / energy;
+            float baseOrbit = orbitDistance;
+            float amplitude = 50.0f;
+
             for (int i = 0 ; i <= segments ; i++){
-                float angle = 2.0f * M_PI * i/segments;
-                float x = cos(angle) * n * orbitDistance;
-                float y = sin(angle) * n * orbitDistance;
+                float loop_angle = 2.0f * M_PI * i / segments;
+                float angle = baseOrbit + amplitude * sin(numOsolations * loop_angle);
+                float x = cos(2*M_PI*i/segments) * angle;
+                float y = cos(2*M_PI*i/segments) * angle;
                 glVertex2f(x + center.x , y + center.y);
             }
             glEnd(); 
@@ -142,7 +150,15 @@ struct Particle{
         glEnd();
     }
     void update (vec2 c) {
-        float r = n * orbitDistance;
+
+        // set radius with oscillation 
+        float numOsolation = 0; 
+        if ( energy < 0){
+            float numOsolations = -13.6f / energy;
+        }
+        float baseOrbit = orbitDistance;
+        float amplitude = 50.0f;
+        float r = baseOrbit + amplitude * sin(numOsolation * angle);
         angle += 0.05;
         pos = vec2(c.x + cos(angle) * r , c.y + sin(angle) * r );
     
@@ -184,15 +200,15 @@ struct Atom {
 };
 
 vector<Atom> atoms {
-    Atom(vec2(0.0f , 250.f)),
-    Atom(vec2(0.0f , 200.f)),
-    Atom(vec2(0.0f , 150.f)),
-    Atom(vec2(0.0f , 100.f)),
+    // Atom(vec2(0.0f , 250.f)),
+    // Atom(vec2(0.0f , 200.f)),
+    // Atom(vec2(0.0f , 150.f)),
+    // Atom(vec2(0.0f , 100.f)),
     Atom(vec2(0.0f , 50.f)),
-    Atom(vec2(0.0f , 0.0f)),
-    Atom(vec2(0.0f , -50.f)),
-    Atom(vec2(0.0f , -100.f)),
-    Atom(vec2(0.0f , -150.f)),
+    // Atom(vec2(0.0f , 0.0f)),
+    // Atom(vec2(0.0f , -50.f)),
+    // Atom(vec2(0.0f , -100.f)),
+    // Atom(vec2(0.0f , -150.f)),
 };
 
 

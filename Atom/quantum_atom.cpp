@@ -1,13 +1,20 @@
-#include <iostream>
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
+#include <GL/glu.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <vector>
+#include <iostream>
 #include <cmath>
 #include <cstdlib>
 #include <ctime>
+#include <iomanip>
+#include <thread>
+#include <chrono>
+#include <fstream>
+#include <complex>
+#include <random>
 #ifndef M_PI
 #define M_PI 3.1415926953558979323846
 #endif
@@ -15,49 +22,14 @@ using namespace glm;
 using namespace std;
 
 // --- variables ---
-
+const double zmSpeed = 10.0;
+const float a0 = 1;
+float electron_r = 1.5f; // radius for spheres
+const double hbar = 1;
+const double m_e = 1;
 float orbitDistance = 50.0f;
 
-struct Engine {
 
-    GLFWwindow* window;
-    int WIDTH = 1600 , HEIGHT = 1200;
-
-    Engine () {
-        // --- Init GLFW ---
-        if (!glfwInit()) {
-            cerr << "failed to init glfw";
-            exit(EXIT_FAILURE);
-        }
-
-        // --- Create Window ---
-        window = glfwCreateWindow(WIDTH, HEIGHT, "2D atom sim by kavan", nullptr, nullptr);
-        if (!window) {
-            cerr << "failed to create window, LOLOLOL";
-            glfwTerminate();
-            exit(EXIT_FAILURE);
-        }
-
-        glfwMakeContextCurrent(window);
-        int fbWidth, fbHeight;
-        glfwGetFramebufferSize(window, &fbWidth, &fbHeight);
-        glViewport(0, 0, fbWidth, fbHeight);
-    }
-    void run() {
-        glClear(GL_COLOR_BUFFER_BIT);
-        glMatrixMode(GL_PROJECTION);
-        glLoadIdentity();
-
-        // set origin to centre
-        double halfWidth = WIDTH / 2.0f, halfHeight = HEIGHT / 2.0f;
-        glOrtho(-halfWidth, halfWidth, -halfHeight, halfHeight, -1.0, 1.0);
-
-        glMatrixMode(GL_MODELVIEW);
-        glLoadIdentity();
-    }
-
-};
-Engine engine;
 
 struct WavePoint { vec2 localPos; vec2 dir;  };
 struct Wave{
@@ -163,138 +135,252 @@ struct Particle{
         
     }
 };
-
 vector<Particle> particles = {
     Particle(vec2(0.0f) , 1 ),
     Particle(vec2(-50.0f , 0.0f) , -1)
 };
 
+struct Engine {
+
+    GLFWwindow* window;
+    int WIDTH = 1600 , HEIGHT = 1200;
 
 
+    // renders vars
+    GLuint sphereVAO, sphereVBO;
+    int sphereVertexCount;
+    GLuint shaderProgram;
+    GLint modelLoc, viewLoc, projLoc, colorLoc;
 
-struct Atom {
-
-    vec2 pos;
-    vector<Particle> particles;
-
-    Atom(vec2 pos) : pos(pos) , particles ({
-        Particle(pos, 1 ),
-        Particle(pos , -1)
-    }) {}
-};
-
-vector<Atom> atoms {
-    Atom(vec2(0.0f , 250.f)),
-    Atom(vec2(0.0f , 200.f)),
-    Atom(vec2(0.0f , 150.f)),
-    Atom(vec2(0.0f , 100.f)),
-    Atom(vec2(0.0f , 50.f)),
-    Atom(vec2(0.0f , 0.0f)),
-    Atom(vec2(0.0f , -50.f)),
-    Atom(vec2(0.0f , -100.f)),
-    Atom(vec2(0.0f , -150.f)),
-};
-
-
-void mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
-    if (action != GLFW_PRESS) return;
-
-    double xpos, ypos;
-    glfwGetCursorPos(window, &xpos, &ypos);
-
-    // Convert Screen Pixels to World Coordinates
-    // Screen (0,0) is top-left. World (0,0) is center.
-    float worldX = (float)xpos - (engine.WIDTH / 2.0f);
-    float worldY = (engine.HEIGHT / 2.0f) - (float)ypos;
-    vec2 mousePos(worldX, worldY);
-
-    if (button == GLFW_MOUSE_BUTTON_LEFT) {
-        // Spawn a burst of 8 photons in a circle
-        float energy1to2 = (-13.6f / 4.0f) - (-13.6f);
-        for (int i = 0; i < 8; i++) {
-            float angle = i * (2.0f * M_PI / 8.0f);
-            vec2 dir(cos(angle), sin(angle));
-            waves.emplace_back(energy1to2, mousePos, dir, vec3(0.0f, 1.0f, 1.0f));
+    Engine () {
+        // --- Init GLFW ---
+        if (!glfwInit()) {
+            cerr << "failed to init glfw";
+            exit(EXIT_FAILURE);
         }
-        cout << "Spawned photons at: " << worldX << ", " << worldY << endl;
-    } 
-    else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
-        // Place a new Atom
-        atoms.emplace_back(mousePos);
-        cout << "Placed atom at: " << worldX << ", " << worldY << endl;
+
+        // --- Create Window ---
+        window = glfwCreateWindow(WIDTH, HEIGHT, "2D atom sim by kavan", nullptr, nullptr);
+        if (!window) {
+            cerr << "failed to create window, LOLOLOL";
+            glfwTerminate();
+            exit(EXIT_FAILURE);
+        }
+
+        glfwMakeContextCurrent(window);
+        int fbWidth, fbHeight;
+        glfwGetFramebufferSize(window, &fbWidth, &fbHeight);
+        glViewport(0, 0, fbWidth, fbHeight);
     }
-}
+    void run() {
+        glClear(GL_COLOR_BUFFER_BIT);
+        glMatrixMode(GL_PROJECTION);
+        glLoadIdentity();
 
-int main() {
+        // set origin to centre
+        double halfWidth = WIDTH / 2.0f, halfHeight = HEIGHT / 2.0f;
+        glOrtho(-halfWidth, halfWidth, -halfHeight, halfHeight, -1.0, 1.0);
 
-    // Initialize 20 atoms in a circle at the center
-    // {
-    //     int num_atoms = 5;
-    //     float radius = 150.0f; // Radius of the circle
-    //     for (int i = 0; i < num_atoms; i++) {
-    //         float angle = 2.0f * M_PI * i / num_atoms;
-    //         float x = cos(angle) * radius;
-    //         float y = sin(angle) * radius;
-    //         atoms.emplace_back(vec2(x, y));
-    //     }
-    // }
+        glMatrixMode(GL_MODELVIEW);
+        glLoadIdentity();
+    }
+
+        void drawSpheres(vector<Particle>& particles) {
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glUseProgram(shaderProgram); // Use our new shaded system
+
+        mat4 projection = perspective(radians(45.0f), 800.0f/600.0f, 0.1f, 2000.0f);
+        mat4 view = lookAt(camera.position(), camera.target, vec3(0, 1, 0)); 
+
+        // Send view and projection to the shader
+        glUniformMatrix4fv(viewLoc, 1, GL_FALSE, value_ptr(view));
+        glUniformMatrix4fv(projLoc, 1, GL_FALSE, value_ptr(projection));
+
+        glBindVertexArray(sphereVAO);
+
+        for (auto& p : particles) {
+            if (p.pos.x < 0 && p.pos.y > 0) continue;
+            mat4 model = translate(mat4(1.0f), p.pos);
+            model = scale(model, vec3(electron_r));
+            glUniformMatrix4fv(modelLoc, 1, GL_FALSE, value_ptr(model));
+            // glUniform4f(colorLoc, p.color.r, p.color.g, p.color.b, p.color.a);
+            
+            glDrawArrays(GL_TRIANGLES, 0, sphereVertexCount);
+        }
+    }
+
+};
+Engine engine;
+
+
+struct Camera {
+    vec3 target = vec3(0.0f, 0.0f, 0.0f);
+    float radius = 50.0f;
+    float azimuth = 0.0f;
+    float elevation = M_PI / 2.0f;
+    float orbitSpeed = 0.01f;
+    float panSpeed = 0.01f;
+    double zoomSpeed = zmSpeed;
+    bool dragging = false;
+    bool panning = false;
+    double lastX = 0.0, lastY = 0.0;
+
+
+    vec3 position() const {
+        float clampedElevation = clamp(elevation, 0.01f, float(M_PI) - 0.01f);
+        return vec3(
+            radius * sin(clampedElevation) * cos(azimuth),
+            radius * cos(clampedElevation),
+            radius * sin(clampedElevation) * sin(azimuth)
+        );
+    }
+    void update() {
+        target = vec3(0.0f, 0.0f, 0.0f);
+    }
+
+    void processMouseMove(double x, double y) {
+        float dx = float(x - lastX);
+        float dy = float(y - lastY);
+        if (dragging) {
+            azimuth += dx * orbitSpeed;
+            elevation -= dy * orbitSpeed;
+            elevation = glm::clamp(elevation, 0.01f, float(M_PI) - 0.01f);
+        }
+        lastX = x;
+        lastY = y;
+        update();
+    }
+
+    void processMouseButton(int button, int action, int mods, GLFWwindow* win) {
+        if (button == GLFW_MOUSE_BUTTON_LEFT || button == GLFW_MOUSE_BUTTON_MIDDLE) {
+            if (action == GLFW_PRESS) {
+                dragging = true;
+                glfwGetCursorPos(win, &lastX, &lastY);
+            } else if (action == GLFW_RELEASE) {
+                dragging = false;
+            }
+        }
+    }
     
-    float energy1to2 = (-13.6f / 4.0f) - (-13.6f);
-    for (int i = 0; i < 10; i++) {
-        waves.push_back(Wave(energy1to2, vec2(400, i*50 -50 ), vec2(-1.0f, 0.0f)));
+    void processScroll(double xoffset, double yoffset) {
+        radius -= yoffset * zoomSpeed;
+        if (radius < 1.0f) radius = 1.0f;
+        update();
+    };
+};
+
+Camera camera;
+
+struct Grid {
+    GLuint gridVAO, gridVBO;
+    vector<float> vertices;
+    Grid() {
+        vertices = CreateGridVertices(500.0f, 2);
+        engine.CreateVBOVAO(gridVAO, gridVBO, vertices.data(), vertices.size());
     }
+    void Draw (GLint objectColorLoc) {
+        glUseProgram(engine.shaderProgram);
+        glUniform4f(objectColorLoc, 1.0f, 1.0f, 1.0f, 0.5f);
+        glBindBuffer(GL_ARRAY_BUFFER, gridVBO);
+        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_DYNAMIC_DRAW);
+        DrawGrid(engine.shaderProgram, gridVAO, vertices.size());
+    }
+    void DrawGrid(GLuint shaderProgram, GLuint gridVAO, size_t vertexCount) {
+        glUseProgram(shaderProgram);
+        glm::mat4 model = glm::mat4(1.0f); // Identity matrix for the grid
+        GLint modelLoc = glGetUniformLocation(shaderProgram, "model");
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
 
-    while (!glfwWindowShouldClose(engine.window)) {
-
-        glfwPollEvents();
-        engine.run();
-        glfwSetMouseButtonCallback(engine.window, mouse_button_callback);
+        glBindVertexArray(gridVAO);
+        glPointSize(2.0f);
+        glDrawArrays(GL_LINES, 0, vertexCount / 3);
+        glBindVertexArray(0);
+    }
+    vector<float> CreateGridVertices(float size, int divisions) {
         
-        for (Atom &a : atoms){
-            for ( Particle& p : a.particles) {
-                p.draw(a.pos);
-                // --- electrons --- 
-                if (p.charge == -1) {
-                    if (p.excitedTimer > 0.0f) p.excitedTimer -= 0.01f;
-                    p.update(a.pos);
+        std::vector<float> vertices;
+        float step = size / divisions;
+        float halfSize = size / 2.0f;
 
-                    float energyforUp = (-13.6f / ((p.n + 1) * (p.n + 1))) - (-13.6f / (p.n * p.n));
-                    for (Wave& w: waves) { 
-                        if (w.energy <= 0.0f || w.col == vec3(1.0f, 1.0f, 0.0f)) continue;
-                        for (WavePoint& wp : w.points){
-                            float dist = length(p.pos - wp.localPos);
-                            
-                            // --- photon hits the atom ---
-                            if (length(p.pos - w.points[w.points.size()/2].localPos) < 30.0f) {
-                                if (abs(w.energy - energyforUp) < 0.1f) {
-                                w.energy = 0.0f; 
-                                p.n++;
-                                p.excitedTimer = 1.0f; // Stay excited for a bit
-                                break;
-                            }
+        // amount to extend the central X-axis line (in same units as size)
+        float extra = step * 3.0f; // adjust this factor to make the line stick out more/less
+        int midZ = divisions / 2;
+
+        // x axis
+        for (int yStep = 3; yStep <= 3; ++yStep) {
+            float y = 0;
+            for (int zStep = 0; zStep <= divisions; ++zStep) {
+                float z = -halfSize + zStep * step;
+                for (int xStep = 0; xStep < divisions; ++xStep) {
+                    float xStart = -halfSize + xStep * step;
+                    float xEnd = xStart + step;
+
+                    // If this is the central line (middle z), extend the very first and last segment
+                    if (zStep == midZ) {
+                        if (xStep == 0) {
+                            xStart -= extra; // extend left end
+                        }
+                        if (xStep == divisions - 1) {
+                            xEnd += extra;   // extend right end
+                        }
                     }
+
+                    vertices.push_back(xStart); vertices.push_back(y); vertices.push_back(z);
+                    vertices.push_back(xEnd);   vertices.push_back(y); vertices.push_back(z);
                 }
             }
         }
-    }}
-    // Starts a pointer at the first photon , 
-    for (auto it = waves.begin(); it != waves.end();){
-        if (it->energy <= 0.0f) {
-            it = waves.erase(it); // remove absorbed photon. removes the photon and returns a new pointer to the very next item.
-            continue;
+        // zaxis
+        for (int xStep = 0; xStep <= divisions; ++xStep) {
+            float x = -halfSize + xStep * step;
+            for (int yStep = 3; yStep <= 3; ++yStep) {
+                float y = 0;
+                for (int zStep = 0; zStep < divisions; ++zStep) {
+                    float zStart = -halfSize + zStep * step;
+                    float zEnd = zStart + step;
+                    vertices.push_back(x); vertices.push_back(y); vertices.push_back(zStart);
+                    vertices.push_back(x); vertices.push_back(y); vertices.push_back(zEnd);
+                }
+            }
         }
-        it->draw();
-        if (it->update(0.03f)) { // if update returns true, it's off-screen
-            it = waves.erase(it);
-            } 
-        else {
-         ++it;
-        }
+
+        return vertices;
+
     }
+};
+
+Grid grid;
+
+
+
+int main () {
+    GLint modelLoc = glGetUniformLocation(engine.shaderProgram, "model");
+    GLint objectColorLoc = glGetUniformLocation(engine.shaderProgram, "objectColor");
+    glUseProgram(engine.shaderProgram);
+    
+
+    for (int i = 0; i < 10000 ; i++ ){
+        float x = -15 + dis(gen) * 30.0f;
+        float y = -15 + dis(gen) * 30.0f;
+        float z = -15 + dis(gen) * 30.0f;
+        particles.emplace_back(vec3(x,y,z));
+    }
+
+
+    float dt = 0.5f;
+    cout << "Starting simulation..." << endl;
+    while (!glfwWindowShouldClose(engine.window)) {
+        grid.Draw(objectColorLoc);
+
+        // ------ Draw Particles ------
+        engine.drawSpheres(particles);
 
         glfwSwapBuffers(engine.window);
         glfwPollEvents();
     }
+
+
+    glfwDestroyWindow(engine.window);
     glfwTerminate();
     return 0;
 }
