@@ -110,6 +110,8 @@ struct Particle{
     int charge;
     float angle;
     float energy = -13.6f;
+    float n_continuous = 1.0f;
+    float orbitScale = 1.0f;
     int n = 1;
     float excitedTimer = 0.0f; 
     Particle(vec2 pos ,int charge) : pos(pos), charge(charge), angle(0.0f) {}
@@ -124,15 +126,15 @@ struct Particle{
             glColor3f(0.4f,0.4f,0.4f);
 
             float numOsolations = -13.6f / energy;
-            float baseOrbit = orbitDistance;
-            float amplitude = 50.0f;
+            float baseOrbit = orbitScale * orbitDistance;
+            float amplitude = 8.0f;
 
             for (int i = 0 ; i <= segments ; i++){
                 float loop_angle = 2.0f * M_PI * i / segments;
-                float angle = baseOrbit + amplitude * sin(numOsolations * loop_angle);
-                float x = cos(2*M_PI*i/segments) * angle;
-                float y = cos(2*M_PI*i/segments) * angle;
-                glVertex2f(x + center.x , y + center.y);
+                float r_osc = baseOrbit + amplitude * sin(n_continuous * loop_angle);
+                float x = cos(loop_angle) * r_osc;
+                float y = sin(loop_angle) * r_osc;
+                glVertex2f(x + center.x, y + center.y);
             }
             glEnd(); 
         } 
@@ -142,10 +144,8 @@ struct Particle{
         glBegin(GL_TRIANGLE_FAN);
         glVertex2f(pos.x , pos.y);
         for (int i = 0 ; i <= segments ; i++){
-            float angle = 2.0f * M_PI * i/segments;
-            float x = cos(angle) * r;
-            float y = sin(angle) * r;
-            glVertex2f(x + pos.x , y + pos.y);
+            float a = 2.0f * M_PI * i / segments;
+            glVertex2f(cos(a) * r + pos.x, sin(a) * r + pos.y);
         }
         glEnd();
     }
@@ -154,27 +154,24 @@ struct Particle{
         // set radius with oscillation 
         float numOsolation = 0; 
         if ( energy < 0){
-            float numOsolations = -13.6f / energy;
+            numOsolation = -13.6f / energy;
         }
-        float baseOrbit = orbitDistance;
-        float amplitude = 50.0f;
-        float r = baseOrbit + amplitude * sin(numOsolation * angle);
+        float baseOrbit = orbitScale * orbitDistance;
+        float amplitude = 8.0f;
+        float r = baseOrbit + amplitude * sin(n_continuous * angle);
         angle += 0.05;
         pos = vec2(c.x + cos(angle) * r , c.y + sin(angle) * r );
     
     // If we are excited (n > 1) and the timer runs out, emit!
     if (n > 1 && excitedTimer <= 0.0f) {
-        float energyDiff = (-13.6f / (n * n)) - (-13.6f / ((n - 1) * (n - 1)));
-
-
-        // Random direction for emission
+        float energyDiff = (-13.6f / (n * n)) - (-13.6f / ((n-1) * (n-1)));
         float randAngle = (rand() % 360) * (M_PI / 180.0f);
         vec2 emitDir(cos(randAngle), sin(randAngle));
-
         waves.emplace_back(abs(energyDiff), pos, emitDir, vec3(1.0f, 1.0f, 0.0f));
-
         n--;
-        excitedTimer += 0.003f;
+        n_continuous = (float)n;
+        orbitScale = (float)n;
+        excitedTimer = 1.0f;
     }
         
     }
@@ -241,6 +238,23 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
     }
 }
 
+void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+    if (action != GLFW_PRESS && action != GLFW_REPEAT) return;
+
+    for (Atom& a : atoms) {
+        for (Particle& p : a.particles) {
+            if (p.charge != -1) continue;
+            if (key == GLFW_KEY_UP)    p.n_continuous += 0.1f;   // more oscillations
+            if (key == GLFW_KEY_DOWN)  p.n_continuous -= 0.1f;   // fewer oscillations
+            if (key == GLFW_KEY_RIGHT) { p.orbitScale += 1.0f; p.n_continuous = p.orbitScale; } // next shell
+            if (key == GLFW_KEY_LEFT)  { p.orbitScale -= 1.0f; p.n_continuous = p.orbitScale; } // prev shell
+            if (p.n_continuous < 0.1f) p.n_continuous = 0.1f;
+            if (p.orbitScale < 1.0f)   p.orbitScale = 1.0f;
+        }
+    }
+}
+
+
 int main() {
 
     // Initialize 20 atoms in a circle at the center
@@ -265,6 +279,8 @@ int main() {
         glfwPollEvents();
         engine.run();
         glfwSetMouseButtonCallback(engine.window, mouse_button_callback);
+        glfwSetMouseButtonCallback(engine.window, mouse_button_callback);
+        glfwSetKeyCallback(engine.window, key_callback);
         
         for (Atom &a : atoms){
             for ( Particle& p : a.particles) {
@@ -283,8 +299,10 @@ int main() {
                             // --- photon hits the atom ---
                             if (length(p.pos - w.points[w.points.size()/2].localPos) < 30.0f) {
                                 if (abs(w.energy - energyforUp) < 0.1f) {
-                                w.energy = 0.0f; 
+                                w.energy = 0.0f;
                                 p.n++;
+                                p.n_continuous = (float)p.n;
+                                p.orbitScale = (float)p.n;
                                 p.excitedTimer = 1.0f; // Stay excited for a bit
                                 break;
                             }
