@@ -12,5 +12,16 @@
       "preLaunchTask": "Build atom_render",
       "MIMode": "gdb"
     }
-  ]
+  ,
+    {
+      "name": "Run quantum_atom",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${fileDirname}/${fileBasenameNoExtension}",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "Build quantum_atom",
+      "MIMode": "gdb"
+    }]
 }

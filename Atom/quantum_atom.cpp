@@ -29,6 +29,8 @@ const double hbar = 1;
 const double m_e = 1;
 float orbitDistance = 50.0f;
 
+// --- random devices ---
+random_device rd; mt19937 gen(rd()); uniform_real_distribution<float> dis(0.0f, 1.0f);
 
 
 struct WavePoint { vec2 localPos; vec2 dir;  };
@@ -140,79 +142,6 @@ vector<Particle> particles = {
     Particle(vec2(-50.0f , 0.0f) , -1)
 };
 
-struct Engine {
-
-    GLFWwindow* window;
-    int WIDTH = 1600 , HEIGHT = 1200;
-
-
-    // renders vars
-    GLuint sphereVAO, sphereVBO;
-    int sphereVertexCount;
-    GLuint shaderProgram;
-    GLint modelLoc, viewLoc, projLoc, colorLoc;
-
-    Engine () {
-        // --- Init GLFW ---
-        if (!glfwInit()) {
-            cerr << "failed to init glfw";
-            exit(EXIT_FAILURE);
-        }
-
-        // --- Create Window ---
-        window = glfwCreateWindow(WIDTH, HEIGHT, "2D atom sim by kavan", nullptr, nullptr);
-        if (!window) {
-            cerr << "failed to create window, LOLOLOL";
-            glfwTerminate();
-            exit(EXIT_FAILURE);
-        }
-
-        glfwMakeContextCurrent(window);
-        int fbWidth, fbHeight;
-        glfwGetFramebufferSize(window, &fbWidth, &fbHeight);
-        glViewport(0, 0, fbWidth, fbHeight);
-    }
-    void run() {
-        glClear(GL_COLOR_BUFFER_BIT);
-        glMatrixMode(GL_PROJECTION);
-        glLoadIdentity();
-
-        // set origin to centre
-        double halfWidth = WIDTH / 2.0f, halfHeight = HEIGHT / 2.0f;
-        glOrtho(-halfWidth, halfWidth, -halfHeight, halfHeight, -1.0, 1.0);
-
-        glMatrixMode(GL_MODELVIEW);
-        glLoadIdentity();
-    }
-
-        void drawSpheres(vector<Particle>& particles) {
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glUseProgram(shaderProgram); // Use our new shaded system
-
-        mat4 projection = perspective(radians(45.0f), 800.0f/600.0f, 0.1f, 2000.0f);
-        mat4 view = lookAt(camera.position(), camera.target, vec3(0, 1, 0)); 
-
-        // Send view and projection to the shader
-        glUniformMatrix4fv(viewLoc, 1, GL_FALSE, value_ptr(view));
-        glUniformMatrix4fv(projLoc, 1, GL_FALSE, value_ptr(projection));
-
-        glBindVertexArray(sphereVAO);
-
-        for (auto& p : particles) {
-            if (p.pos.x < 0 && p.pos.y > 0) continue;
-            mat4 model = translate(mat4(1.0f), p.pos);
-            model = scale(model, vec3(electron_r));
-            glUniformMatrix4fv(modelLoc, 1, GL_FALSE, value_ptr(model));
-            // glUniform4f(colorLoc, p.color.r, p.color.g, p.color.b, p.color.a);
-            
-            glDrawArrays(GL_TRIANGLES, 0, sphereVertexCount);
-        }
-    }
-
-};
-Engine engine;
-
-
 struct Camera {
     vec3 target = vec3(0.0f, 0.0f, 0.0f);
     float radius = 50.0f;
@@ -269,7 +198,105 @@ struct Camera {
     };
 };
 
+
 Camera camera;
+
+struct Engine {
+
+    GLFWwindow* window;
+    int WIDTH = 1600 , HEIGHT = 1200;
+
+
+    // renders vars
+    GLuint sphereVAO, sphereVBO;
+    int sphereVertexCount;
+    GLuint shaderProgram;
+    GLint modelLoc, viewLoc, projLoc, colorLoc;
+
+    Engine () {
+        // --- Init GLFW ---
+        if (!glfwInit()) {
+            cerr << "failed to init glfw";
+            exit(EXIT_FAILURE);
+        }
+
+        // --- Create Window ---
+        window = glfwCreateWindow(WIDTH, HEIGHT, "Quantum hydrogen", nullptr, nullptr);
+        if (!window) {
+            cerr << "failed to create window, LOLOLOL";
+            glfwTerminate();
+            exit(EXIT_FAILURE);
+        }
+
+        glfwMakeContextCurrent(window);
+        glewExperimental = GL_TRUE;
+        glewInit();
+        int fbWidth, fbHeight;
+        glfwGetFramebufferSize(window, &fbWidth, &fbHeight);
+        glViewport(0, 0, fbWidth, fbHeight);
+    }
+    void run() {
+        glClear(GL_COLOR_BUFFER_BIT);
+        glMatrixMode(GL_PROJECTION);
+        glLoadIdentity();
+
+        // set origin to centre
+        double halfWidth = WIDTH / 2.0f, halfHeight = HEIGHT / 2.0f;
+        glOrtho(-halfWidth, halfWidth, -halfHeight, halfHeight, -1.0, 1.0);
+
+        glMatrixMode(GL_MODELVIEW);
+        glLoadIdentity();
+    }
+    
+    void CreateVBOVAO(GLuint& VAO, GLuint& VBO, const vector<float>& vertices) {
+        glGenVertexArrays(1, &VAO);
+        glGenBuffers(1, &VBO);
+        glBindVertexArray(VAO);
+        glBindBuffer(GL_ARRAY_BUFFER, VBO);
+        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(0);
+    }
+    void CreateVBOVAO(GLuint& VAO, GLuint& VBO, const float* vertices, size_t vertexCount) {
+        glGenVertexArrays(1, &VAO);
+        glGenBuffers(1, &VBO);
+
+        glBindVertexArray(VAO);
+        glBindBuffer(GL_ARRAY_BUFFER, VBO);
+        glBufferData(GL_ARRAY_BUFFER, vertexCount * sizeof(float), vertices, GL_STATIC_DRAW);
+
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(0);
+        glBindVertexArray(0);
+    }
+
+        void drawSpheres(vector<Particle>& particles) {
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glUseProgram(shaderProgram); // Use our new shaded system
+
+        mat4 projection = perspective(radians(45.0f), 800.0f/600.0f, 0.1f, 2000.0f);
+        mat4 view = lookAt(camera.position(), camera.target, vec3(0, 1, 0)); 
+
+        // Send view and projection to the shader
+        glUniformMatrix4fv(viewLoc, 1, GL_FALSE, value_ptr(view));
+        glUniformMatrix4fv(projLoc, 1, GL_FALSE, value_ptr(projection));
+
+        glBindVertexArray(sphereVAO);
+
+        for (auto& p : particles) {
+            if (p.pos.x < 0 && p.pos.y > 0) continue;
+            mat4 model = translate(mat4(1.0f), vec3(p.pos,0.0f));
+            model = scale(model, vec3(electron_r));
+            glUniformMatrix4fv(modelLoc, 1, GL_FALSE, value_ptr(model));
+            // glUniform4f(colorLoc, p.color.r, p.color.g, p.color.b, p.color.a);
+            
+            glDrawArrays(GL_TRIANGLES, 0, sphereVertexCount);
+        }
+    }
+
+};
+Engine engine;
+
 
 struct Grid {
     GLuint gridVAO, gridVBO;
@@ -354,23 +381,23 @@ Grid grid;
 
 
 int main () {
-    GLint modelLoc = glGetUniformLocation(engine.shaderProgram, "model");
-    GLint objectColorLoc = glGetUniformLocation(engine.shaderProgram, "objectColor");
-    glUseProgram(engine.shaderProgram);
+    // GLint modelLoc = glGetUniformLocation(engine.shaderProgram, "model");
+    // GLint objectColorLoc = glGetUniformLocation(engine.shaderProgram, "objectColor");
+    // glUseProgram(engine.shaderProgram);
     
 
     for (int i = 0; i < 10000 ; i++ ){
         float x = -15 + dis(gen) * 30.0f;
         float y = -15 + dis(gen) * 30.0f;
         float z = -15 + dis(gen) * 30.0f;
-        particles.emplace_back(vec3(x,y,z));
+        particles.emplace_back(vec2(x,y) , -1);
     }
 
 
     float dt = 0.5f;
     cout << "Starting simulation..." << endl;
     while (!glfwWindowShouldClose(engine.window)) {
-        grid.Draw(objectColorLoc);
+        // grid.Draw(objectColorLoc);
 
         // ------ Draw Particles ------
         engine.drawSpheres(particles);
