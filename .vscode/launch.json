@@ -17,7 +17,7 @@
       "name": "Run quantum_atom",
       "type": "cppdbg",
       "request": "launch",
-      "program": "${fileDirname}/${fileBasenameNoExtension}",
+      "program": "${workspaceFolder}/build/quantum_atom.cpp",
       "args": [],
       "stopAtEntry": false,
       "cwd": "${workspaceFolder}",

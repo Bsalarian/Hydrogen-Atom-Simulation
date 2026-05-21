@@ -60,9 +60,11 @@ gl_Position=projection⋅view⋅model⋅vec4(aPos,1.0)
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-#include <vector>
-#include <iostream>
+#include <algorithm>
 #include <cmath>
+#include <iostream>
+#include <random>
+#include <vector>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -272,7 +274,7 @@ struct Camera {
     float elevation = (float)M_PI / 4.0f;      // vertical angle, radians
  
     float orbitSpeed = 0.005f;
-    float zoomSpeed  = 0.5f;
+    float zoomSpeed  = 1.5f;
  
     bool  dragging = false;
     double lastX = 0, lastY = 0;
@@ -348,139 +350,214 @@ static void cb_resize(GLFWwindow* /*win*/, int w, int h)
 }
  
 
-// struct Engine {
-//     GLFWwindow* window;
+// ENGINE  — owns window, GL context, shader, sphere mesh, uniform locs
+// =====================================================================
+struct Engine {
+    GLFWwindow* window   = nullptr;
+    GLuint      shader   = 0;
+    Mesh        sphere;
+ 
+    GLint uModel       = -1;
+    GLint uView        = -1;
+    GLint uProjection  = -1;
+    GLint uObjectColor = -1;
+    GLint uLightPos    = -1;
+    GLint uViewPos     = -1;
+ 
+    Engine(int w, int h, const char* title)
+    {
+        if (!glfwInit()) { std::cerr << "glfwInit failed\n"; std::exit(-1); }
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+ 
+        window = glfwCreateWindow(w, h, title, nullptr, nullptr);
+        if (!window) { std::cerr << "Window creation failed\n"; glfwTerminate(); std::exit(-1); }
+ 
+        glfwMakeContextCurrent(window);
+        glfwSwapInterval(1);
+ 
+        glewExperimental = GL_TRUE;
+        if (glewInit() != GLEW_OK) { std::cerr << "glewInit failed\n"; std::exit(-1); }
+ 
+        glEnable(GL_DEPTH_TEST);
+        glClearColor(0.05f, 0.05f, 0.1f, 1.0f);
+ 
+        shader       = buildShaderProgram();
+        uModel       = glGetUniformLocation(shader, "model");
+        uView        = glGetUniformLocation(shader, "view");
+        uProjection  = glGetUniformLocation(shader, "projection");
+        uObjectColor = glGetUniformLocation(shader, "objectColor");
+        uLightPos    = glGetUniformLocation(shader, "lightPos");
+        uViewPos     = glGetUniformLocation(shader, "viewPos");
+ 
+        sphere = buildSphereMesh(1.0f, 20, 20);
+    }
+ 
+    // Call once per frame before any drawing
+    void beginFrame()
+    {
+        // KEY: must clear depth buffer too, not just color
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glUseProgram(shader);
+    }
+ 
+    // Draw one sphere: translate to pos, scale by scale, color it
+    void drawSphere(glm::vec3 pos, glm::vec3 color, float scale = 1.0f)
+    {
+        glm::mat4 model = glm::scale(
+            glm::translate(glm::mat4(1.0f), pos),
+            glm::vec3(scale)
+        );
+        glUniformMatrix4fv(uModel, 1, GL_FALSE, glm::value_ptr(model));
+        glUniform3fv(uObjectColor, 1, glm::value_ptr(color));
+        glBindVertexArray(sphere.vao);
+        glDrawElements(GL_TRIANGLES, sphere.indexCount, GL_UNSIGNED_INT, nullptr);
+    }
+ 
+    glm::mat4 projectionMatrix(float fovDeg = 45.0f, float nearZ = 0.1f, float farZ = 500.0f)
+    {
+        int w, h;
+        glfwGetFramebufferSize(window, &w, &h);
+        if (h == 0) h = 1;
+        return glm::perspective(glm::radians(fovDeg), (float)w / h, nearZ, farZ);
+    }
+ 
+    ~Engine()
+    {
+        glDeleteVertexArrays(1, &sphere.vao);
+        glDeleteBuffers(1, &sphere.vbo);
+        glDeleteBuffers(1, &sphere.ebo);
+        glDeleteProgram(shader);
+        glfwDestroyWindow(window);
+        glfwTerminate();
+    }
+};
 
-//     // renders vars
-//     GLuint sphereVAO, sphereVBO;
-//     int sphereVertexCount;
-//     GLuint shaderProgram;
-//     GLint modelLoc, viewLoc, projLoc, colorLoc;
+/*
 
-//     Engine() {
+Reference: 
+https://chem.libretexts.org//Courses/University_of_California_Davis/Chem_107B:_Physical_Chemistry_for_Life_Scientists/
+Chapters/4:_Quantum_Theory/4.10:_The_Schr%C3%B6dinger_Wave_Equation_for_the_Hydrogen_Atom
+ 
+PARTICLE SYSTEM
+|ψ_nlm|²
+
+n — which shell (1, 2, 3…). Bigger n = electron lives farther out. This is the energy level.
+l — the shape of the orbital within that shell (0=sphere, 1=dumbbell, 2=cloverleaf). Must be less than n.
+m — which orientation the lobe points (ranges from -l to +l). For l=1 you get m = -1, 0, or 1 — three different dumbbell orientations.
+
+ψ(r, θ, φ) = R(r) · Y(θ, φ)
+
+two main parts:
+R(r) — radial part : Controls shell size and shape 
+        Controlled by n and l
+        n = principal (shell number 1,2,3…)
+        l = azimuthal (0=s, 1=p, 2=d…)
+        l must be < n
+
+Y(θ, φ) — angular part : Controls 3D orientation/lobes
+        Controlled by l and m
+        l = shape of orbital lobe
+        m = magnetic (orientation)
+        −l ≤ m ≤ l
+
+Sampling strategy (CDF method)
+    1. Sample r from |R(r)|² probability distribution
+    2. Sample θ from |Y(θ,φ)|² distribution (depends on l,m)
+    3. Sample φ uniformly 0→2π (always symmetric around z-axis)
+*/
 
 
-//     }
+struct ParticleSystem {
+    std::vector<glm::vec3> positions;
+    std::vector<glm::vec3> colors;
+    std::mt19937 rng{42};
+
+    void sampleWaveFunction(int n, int l , int m, int N){
+        positions.clear();
+        colors.clear();
+        std::uniform_real_distribution<double> uniPhi(0.0, 2.0 * M_PI);
 
 
+        // Scale factor: brightens/normalises colours for display.
+        // Larger n → wavefunction is more spread out → lower peak density,
+        // so we compensate to keep colours vivid.
+        double scale = std::pow(5.0, n) * 1.5;
+ 
+        double maxDensity = 0.0;   // track max so we can normalis
+
+        std::vector<double> densities(N);
+
+    }
+ 
+    void generateRandom(int N, float spread)
+    {
+        positions.clear();
+        colors.clear();
+        srand(42);
+        for (int i = 0; i < N; ++i) {
+            // Rejection sample: keep only points inside unit sphere
+            // so density is uniform (not corner-heavy like a cube sample)
+            glm::vec3 p;
+            do {
+                p = glm::vec3(
+                    (rand() / (float)RAND_MAX) * 2.0f - 1.0f,
+                    (rand() / (float)RAND_MAX) * 2.0f - 1.0f,
+                    (rand() / (float)RAND_MAX) * 2.0f - 1.0f
+                );
+            } while (glm::length(p) > 1.0f);
+ 
+            positions.push_back(p * spread);
+ 
+            // Color: purple at centre → orange at edge (mimics density heatmap)
+            float t = glm::length(p);
+            colors.push_back({ 0.3f + 0.7f * t, 0.1f + 0.2f * t, 0.9f - 0.6f * t });
+        }
+    }
 
 
-
-// }
-
-
-
+ 
+    int size() const { return (int)positions.size(); }
+};
 
 
 
 int main() {
-    if (!glfwInit()){
-        std::cerr << "Failed to initialize GLFW\n";
-        return -1;
-    }
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    glewExperimental = GL_TRUE;
 
-    GLFWwindow* window = glfwCreateWindow(800  , 600, "Modern GL – Sphere", nullptr, nullptr);
-    if (!window) {
-        std::cerr << "glfwCreateWindow failed\n";
-        glfwTerminate();
-        return -1;
-    }
-    glfwMakeContextCurrent(window);
-    glewExperimental = GL_TRUE;
-
-    GLenum err = glewInit();
-    if (err != GLEW_OK) {
-        std::cerr << "GLEW init failed: " << glewGetErrorString(err) << "\n";
-        return -1;
-    }
-
-    glfwSwapInterval(1); // vsync
-
+    Engine engine(1800,1000,"");
     // ── Camera + callbacks ──────────────────────
     Camera camera;
-    glfwSetWindowUserPointer(window, &camera);
-    glfwSetMouseButtonCallback(window, cb_mouseButton);
-    glfwSetCursorPosCallback(window,   cb_mouseMove);
-    glfwSetScrollCallback(window,      cb_scroll);
-    glfwSetKeyCallback(window,         cb_key);
-    glfwSetFramebufferSizeCallback(window, cb_resize);
+    glfwSetWindowUserPointer(engine.window, &camera);
+    glfwSetMouseButtonCallback(engine.window,     cb_mouseButton);
+    glfwSetCursorPosCallback(engine.window,       cb_mouseMove);
+    glfwSetScrollCallback(engine.window,          cb_scroll);
+    glfwSetKeyCallback(engine.window,             cb_key);
+    glfwSetFramebufferSizeCallback(engine.window, cb_resize);
  
-    // ── Shader program ──────────────────────────
-    GLuint shader = buildShaderProgram();
+    ParticleSystem particles;
+    particles.generateRandom(5000, 15.0f);
 
-    GLint uModel       = glGetUniformLocation(shader, "model");
-    GLint uView        = glGetUniformLocation(shader, "view");
-    GLint uProjection  = glGetUniformLocation(shader, "projection");
-    GLint uObjectColor = glGetUniformLocation(shader, "objectColor");
-    GLint uLightPos    = glGetUniformLocation(shader, "lightPos");
-    GLint uViewPos     = glGetUniformLocation(shader, "viewPos");
- 
-    Mesh sphere = buildSphereMesh(1.0f, 32, 32);
+    glm::vec3 lightPos(20.0f, 20.0f, 20.0f);
     
-    glm::vec3 lightPos(10.0f, 10.0f, 10.0f);
-    
-    // ── Projection matrix ───────────────────────
-    //  Rebuilt each frame so window resize is handled gracefully.
-    auto makeProjection = [&]() {
-        int w, h;
-        glfwGetFramebufferSize(window, &w, &h);
-        if (h == 0) h = 1;
-        return glm::perspective(glm::radians(45.0f),
-                                (float)w / (float)h,
-                                0.1f, 500.0f);
-    };
-    
-    while (!glfwWindowShouldClose(window)){
+    while (!glfwWindowShouldClose(engine.window))
+    {
         glfwPollEvents();
-        glClearColor(0.1f,0.1f,0.15f,1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        glUseProgram(shader);
-        // Camera / light uniforms
+        engine.beginFrame();
+ 
         glm::mat4 view       = camera.viewMatrix();
-        glm::mat4 projection = makeProjection();
-
-        glUniformMatrix4fv(uView,       1, GL_FALSE, glm::value_ptr(view));
-        glUniformMatrix4fv(uProjection, 1, GL_FALSE, glm::value_ptr(projection));
-        glUniform3fv(uLightPos, 1, glm::value_ptr(lightPos));
-        glUniform3fv(uViewPos,  1, glm::value_ptr(camera.position()));
-        
-
-        // ── Draw a grid of spheres (5 × 5) as a stress / layout test ──
-        //    Later this will become the particle cloud.
-        for (int ix = -2; ix <= 2; ++ix) {
-            for (int iy = -2; iy <= 2; ++iy) {
-                glm::mat4 model = glm::translate(glm::mat4(1.0f),
-                                    glm::vec3(ix * 2.5f, iy * 2.5f, 0.0f));
+        glm::mat4 projection = engine.projectionMatrix();
  
-                // Colour varies across the grid – handy sanity check
-                float r = (float)(ix + 2) / 4.0f;
-                float g = (float)(iy + 2) / 4.0f;
-                float b = 0.6f;
+        glUniformMatrix4fv(engine.uView,       1, GL_FALSE, glm::value_ptr(view));
+        glUniformMatrix4fv(engine.uProjection, 1, GL_FALSE, glm::value_ptr(projection));
+        glUniform3fv(engine.uLightPos, 1, glm::value_ptr(lightPos));
+        glUniform3fv(engine.uViewPos,  1, glm::value_ptr(camera.position()));
  
-                glUniformMatrix4fv(uModel, 1, GL_FALSE, glm::value_ptr(model));
-                glUniform3f(uObjectColor, r, g, b);
+        for (int i = 0; i < particles.size(); ++i)
+            engine.drawSphere(particles.positions[i], particles.colors[i], 0.3f);
  
-                glBindVertexArray(sphere.vao);
-                glDrawElements(GL_TRIANGLES, sphere.indexCount, GL_UNSIGNED_INT, nullptr);
-            }
-        }
-
-        glfwSwapBuffers(window);
-
-
+        glfwSwapBuffers(engine.window);
     }
-    
-    glDeleteVertexArrays(1, &sphere.vao);
-    glDeleteBuffers(1, &sphere.vbo);
-    glDeleteBuffers(1, &sphere.ebo);
-    glDeleteProgram(shader);
- 
-    glfwDestroyWindow(window);
-    glfwTerminate();
     return 0;
 }
