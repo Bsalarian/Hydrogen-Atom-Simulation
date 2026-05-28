@@ -462,10 +462,11 @@ Y(θ, φ) — angular part : Controls 3D orientation/lobes
         m = magnetic (orientation)
         −l ≤ m ≤ l
 
-Sampling strategy (CDF method)
-    1. Sample r from |R(r)|² probability distribution
-    2. Sample θ from |Y(θ,φ)|² distribution (depends on l,m)
-    3. Sample φ uniformly 0→2π (always symmetric around z-axis)
+We will use the Von Neumann Rejection Sampling instead of the CDF sampling.
+    Rejection sampling works by picking a random point in a 3D box, 
+    calculating the probability density P at that point, and then rolling a random number between 0 and the maximum possible density.
+    If your random roll is less than P, you spawn a particle.
+    If not, you throw the point away and try again.
 */
 
 
@@ -474,11 +475,34 @@ struct ParticleSystem {
     std::vector<glm::vec3> colors;
     std::mt19937 rng{42};
 
+
+    double evaluateDensity(double x ,double y, double z, int n, int l, int m, double z){
+
+        double r = std::sqrt(x*x + y*y + z*z);
+        if ( r < 1e-6) return 0.0; // Prevent singularity
+        
+        // Radial part
+        // Square root part for normalization constant.
+        // Exponential $e^{-\rho / 2}$ to make sure the wf decays to 0 when far
+        // The Laguerre polynomial L for generating alternating peaks and valleys of density.
+
+        double rho = (2.0 * r) /n; // for a0=1.0 aka hydrogen
+
+        double constant = std::sqrt( std::pow(2.0 / n , 3) * (std::tgamma(n - l -1) / ( 2.0 * n * std::tgamma(n+l))));
+
+        double radial = constant * std::exp(-rho / 2.0) * std::pow(rho ,l) * std::assoc_laguerre(n-l-1 , 2.0 * l +1 , rho);
+
+
+    }
+
     void sampleWaveFunction(int n, int l , int m, int N){
         positions.clear();
         colors.clear();
         std::uniform_real_distribution<double> uniPhi(0.0, 2.0 * M_PI);
 
+
+
+        
 
         // Scale factor: brightens/normalises colours for display.
         // Larger n → wavefunction is more spread out → lower peak density,
