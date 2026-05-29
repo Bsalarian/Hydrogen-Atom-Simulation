@@ -480,8 +480,13 @@ struct ParticleSystem {
 
         double r = std::sqrt(x*x + y*y + z*z);
         if ( r < 1e-6) return 0.0; // Prevent singularity
+
+        // Standard physics coordinates (theta = vertical inclination, phi = horizontal azimuth)
+        double theta = std::acos(y / r);       
+        double phi = std::atan2(z, x);         
+        if (phi < 0.0) phi += 2.0 * M_PI;
         
-        // Radial part
+        // Radial part -- determines distance of the electron
         // Square root part for normalization constant.
         // Exponential $e^{-\rho / 2}$ to make sure the wf decays to 0 when far
         // The Laguerre polynomial L for generating alternating peaks and valleys of density.
@@ -493,54 +498,102 @@ struct ParticleSystem {
         double radial = constant * std::exp(-rho / 2.0) * std::pow(rho ,l) * std::assoc_laguerre(n-l-1 , 2.0 * l +1 , rho);
 
 
+        // Angular part -- defines the shape of the orbitals.
+        // We use Real Spherical Harmonics and std::sph_legendre to automatically apply the normalization factor $N_{lm}$.
+
+        double angular = std::sph_legendre(l , std::abs(m) , theta);
+
+        // Apply real spherical harmonics mapping for horizental rotation
+        if (m > 0) {
+            angular *= std::sqrt(2.0) * std::cos(m * phi);
+        } else if ( m = 0) angular = 1.0;
+        else if (m < 0 ) {
+            angular *= std::sqrt(2.0) * std::sin(m * phi);
+        }
+
+        // Probability density is the squared magnitude of the wave function
+        double psi = radial * angular;
+        return psi * psi;
     }
 
-    void sampleWaveFunction(int n, int l , int m, int N){
+    void sampleWaveFunction(int n, int l , int m, int N, double Z = 1.0){
         positions.clear();
         colors.clear();
-        std::uniform_real_distribution<double> uniPhi(0.0, 2.0 * M_PI);
-
-
-
         
+        // Define bounding box size 
+        double rMax = (n *n +3.0*n) / Z;
+        std::uniform_real_distribution<double> distPos(-rMax , rMax);
 
-        // Scale factor: brightens/normalises colours for display.
-        // Larger n → wavefunction is more spread out → lower peak density,
-        // so we compensate to keep colours vivid.
-        double scale = std::pow(5.0, n) * 1.5;
- 
-        double maxDensity = 0.0;   // track max so we can normalis
+        // Find Max Density empirically to normalize our rejection threshold
+        double maxDensity = 0.0;
 
-        std::vector<double> densities(N);
+        for (int i = 0 ; i < 5000; i++) {
+            double x = distPos(rng);
+            double y = distPos(rng);
+            double z = distPos(rng);
+            double density = evaluateDensity(x,y,z,n,l,m,Z);
+            if (density > maxDensity) maxDensity = density;
+        }
 
-    }
- 
-    void generateRandom(int N, float spread)
-    {
-        positions.clear();
-        colors.clear();
-        srand(42);
-        for (int i = 0; i < N; ++i) {
-            // Rejection sample: keep only points inside unit sphere
-            // so density is uniform (not corner-heavy like a cube sample)
-            glm::vec3 p;
-            do {
-                p = glm::vec3(
-                    (rand() / (float)RAND_MAX) * 2.0f - 1.0f,
-                    (rand() / (float)RAND_MAX) * 2.0f - 1.0f,
-                    (rand() / (float)RAND_MAX) * 2.0f - 1.0f
-                );
-            } while (glm::length(p) > 1.0f);
- 
-            positions.push_back(p * spread);
- 
-            // Color: purple at centre → orange at edge (mimics density heatmap)
-            float t = glm::length(p);
-            colors.push_back({ 0.3f + 0.7f * t, 0.1f + 0.2f * t, 0.9f - 0.6f * t });
+        // Von Neumann Rejection Sampling
+        // https://en.wikipedia.org/wiki/Rejection_sampling 
+        //  1. Sample a point on the x axis from the proposal dist
+        //  2. Draw a vertical line at this x position , up to the y-value of the probability density function of the proposal distribution.
+        //  3. ample uniformly along this line. 
+        //     If the sampled value is greater than the value of the desired distribution at this vertical line, 
+        //                  reject the x value and return to step 1.
+        //     Else the x value is a sample from the desired distribution.
+
+
+        std::uniform_real_distribution<double> distProb(0.0 , maxDensity);
+
+        while (positions.size() < N) {
+            double x = distPos(rng);
+            double y = distPos(rng);
+            double z = distPos(rng);
+            double r = std::sqrt(x*x + y*y + z*z);
+
+            // Keep only points inside the spherical bounding volume
+            if (r > rMax) continue;
+
+            double density = evaluateDensity(x,y,z,n,l,m,Z);
+            double roll = distProb(rng);
+
+            // Accept the particle if random roll falls under the density curve
+            if ( roll < density) {
+                positions.push_back(glm::vec3(x,y,z));
+
+                // Color based on radius 
+                float t = (float)(r / rMax);
+                colors.push_back({ 0.2f + 0.8f * t, 0.4f - 0.4f * t, 0.9f - 0.7f * t });
+            }
         }
     }
-
-
+ 
+    // void generateRandom(int N, float spread)
+    // {
+    //     positions.clear();
+    //     colors.clear();
+    //     srand(42);
+    //     for (int i = 0; i < N; ++i) {
+    //         // Rejection sample: keep only points inside unit sphere
+    //         // so density is uniform (not corner-heavy like a cube sample)
+    //         glm::vec3 p;
+    //         do {
+    //             p = glm::vec3(
+    //                 (rand() / (float)RAND_MAX) * 2.0f - 1.0f,
+    //                 (rand() / (float)RAND_MAX) * 2.0f - 1.0f,
+    //                 (rand() / (float)RAND_MAX) * 2.0f - 1.0f
+    //             );
+    //         } while (glm::length(p) > 1.0f);
+ 
+    //         positions.push_back(p * spread);
+ 
+    //         // Color: purple at centre → orange at edge (mimics density heatmap)
+    //         float t = glm::length(p);
+    //         colors.push_back({ 0.3f + 0.7f * t, 0.1f + 0.2f * t, 0.9f - 0.6f * t });
+    //     }
+    // }
  
     int size() const { return (int)positions.size(); }
 };
