@@ -106,37 +106,14 @@ void main()
 )glsl";
  
 static const char* FRAG_SRC = R"glsl(
-#version 330 core
- 
-in vec3 fragPos;
-in vec3 fragNormal;
- 
-uniform vec3  objectColor;
-uniform vec3  lightPos;   // world-space light position
-uniform vec3  viewPos;    // camera position (for specular)
- 
-out vec4 fragColor;
- 
-void main()
-{
-    // --- ambient ---
-    float ambientStrength = 0.15;
-    vec3  ambient = ambientStrength * objectColor;
- 
-    // --- diffuse ---
-    vec3  lightDir = normalize(lightPos - fragPos);
-    float diff     = max(dot(fragNormal, lightDir), 0.0);
-    vec3  diffuse  = diff * objectColor;
- 
-    // --- specular (Blinn-Phong) ---
-    float specStrength = 0.5;
-    vec3  viewDir   = normalize(viewPos - fragPos);
-    vec3  halfwayDir = normalize(lightDir + viewDir);
-    float spec      = pow(max(dot(fragNormal, halfwayDir), 0.0), 64.0);
-    vec3  specular  = specStrength * spec * vec3(1.0);
- 
-    fragColor = vec4(ambient + diffuse + specular, 1.0);
-}
+float diff = max(dot(fragNormal, lightDir), 0.0);
+
+vec3 color =
+    objectColor * (0.25 + diff * 1.5);
+
+color = pow(color, vec3(1.0 / 2.2));
+
+fragColor = vec4(color, 0.06);
 )glsl";
 
 
@@ -391,7 +368,7 @@ struct Engine {
         uLightPos    = glGetUniformLocation(shader, "lightPos");
         uViewPos     = glGetUniformLocation(shader, "viewPos");
  
-        sphere = buildSphereMesh(1.0f, 20, 20);
+        sphere = buildSphereMesh(1.0f, 32,32);
     }
  
     // Call once per frame before any drawing
@@ -476,7 +453,7 @@ struct ParticleSystem {
     std::mt19937 rng{42};
 
 
-    double evaluateDensity(double x ,double y, double z, int n, int l, int m, double z){
+    double evaluateDensity(double x ,double y, double z, int n, int l, int m, double Z){
 
         double r = std::sqrt(x*x + y*y + z*z);
         if ( r < 1e-6) return 0.0; // Prevent singularity
@@ -506,9 +483,9 @@ struct ParticleSystem {
         // Apply real spherical harmonics mapping for horizental rotation
         if (m > 0) {
             angular *= std::sqrt(2.0) * std::cos(m * phi);
-        } else if ( m = 0) angular = 1.0;
+        } 
         else if (m < 0 ) {
-            angular *= std::sqrt(2.0) * std::sin(m * phi);
+            angular *= std::sqrt(2.0) * std::sin(std::abs(m)* phi);
         }
 
         // Probability density is the squared magnitude of the wave function
@@ -614,7 +591,8 @@ int main() {
     glfwSetFramebufferSizeCallback(engine.window, cb_resize);
  
     ParticleSystem particles;
-    particles.generateRandom(5000, 15.0f);
+    // particles.generateRandom(5000, 15.0f);
+    particles.sampleWaveFunction(3, 1, 0, 5000 , 1.0);
 
     glm::vec3 lightPos(20.0f, 20.0f, 20.0f);
     
