@@ -197,15 +197,15 @@ struct Atom {
 };
 
 vector<Atom> atoms {
-    Atom(vec2(0.0f , 250.f)),
-    Atom(vec2(0.0f , 200.f)),
-    Atom(vec2(0.0f , 150.f)),
-    Atom(vec2(0.0f , 100.f)),
+    // Atom(vec2(0.0f , 250.f)),
+    // Atom(vec2(0.0f , 200.f)),
+    // Atom(vec2(0.0f , 150.f)),
+    // Atom(vec2(0.0f , 100.f)),
     Atom(vec2(0.0f , 50.f)),
-    Atom(vec2(0.0f , 0.0f)),
-    Atom(vec2(0.0f , -50.f)),
-    Atom(vec2(0.0f , -100.f)),
-    Atom(vec2(0.0f , -150.f)),
+    // Atom(vec2(0.0f , 0.0f)),
+    // Atom(vec2(0.0f , -50.f)),
+    // Atom(vec2(0.0f , -100.f)),
+    // Atom(vec2(0.0f , -150.f)),
 };
 
 

@@ -72,7 +72,7 @@ gl_Position=projection⋅view⋅model⋅vec4(aPos,1.0)
 
 
 static const int SCR_W = 1800;
-static const int SCR_H = 1020;
+static const int SCR_H = 1200;
 
 // =====================================================
 // SHADERS
@@ -106,16 +106,51 @@ void main()
 )glsl";
  
 static const char* FRAG_SRC = R"glsl(
-float diff = max(dot(fragNormal, lightDir), 0.0);
+#version 330 core
 
-vec3 color =
-    objectColor * (0.25 + diff * 1.5);
+in vec3 fragPos;
+in vec3 fragNormal;
 
-color = pow(color, vec3(1.0 / 2.2));
+uniform vec3 objectColor;
+uniform vec3 lightPos;
+uniform vec3 viewPos;
 
-fragColor = vec4(color, 0.06);
+out vec4 fragColor;
+
+void main()
+{
+    vec3 N = normalize(fragNormal);
+    vec3 L = normalize(lightPos - fragPos);
+
+    // softer ambient
+    float ambientStrength = 0.25;
+    vec3 ambient = ambientStrength * objectColor;
+
+    // softer diffuse with minimum floor
+    float diff = max(dot(N, L), 0.0);
+    diff = 0.35 + diff * 1.2;
+
+    vec3 diffuse = diff * objectColor;
+
+    // softer specular
+    vec3 V = normalize(viewPos - fragPos);
+    vec3 H = normalize(L + V);
+
+    float spec = pow(max(dot(N, H), 0.0), 12.0);
+
+    vec3 specular = vec3(1.0) * spec * 0.02;
+
+    vec3 finalColor = ambient + diffuse + specular;
+
+    // Reinhard tone mapping
+    finalColor = finalColor / (finalColor + vec3(1.0));
+    
+    // gamma correction
+    finalColor = pow(finalColor, vec3(1.0 / 2.2));
+
+    fragColor = vec4(finalColor, 0.8);
+}
 )glsl";
-
 
 // =====================================================
 // SHADER HELPERS
@@ -358,8 +393,16 @@ struct Engine {
         if (glewInit() != GLEW_OK) { std::cerr << "glewInit failed\n"; std::exit(-1); }
  
         glEnable(GL_DEPTH_TEST);
-        glClearColor(0.05f, 0.05f, 0.1f, 1.0f);
- 
+
+        glEnable(GL_BLEND);
+
+        glBlendFunc(
+            GL_SRC_ALPHA,
+            GL_ONE_MINUS_SRC_ALPHA
+        );
+        glClearColor(0.01f, 0.01f, 0.03f, 1.0f);
+
+
         shader       = buildShaderProgram();
         uModel       = glGetUniformLocation(shader, "model");
         uView        = glGetUniformLocation(shader, "view");
@@ -376,6 +419,7 @@ struct Engine {
     {
         // KEY: must clear depth buffer too, not just color
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glDepthMask(GL_FALSE);
         glUseProgram(shader);
     }
  
@@ -410,6 +454,45 @@ struct Engine {
         glfwTerminate();
     }
 };
+
+
+glm::vec3 heatmapInferno(float t)
+{
+    t = glm::clamp(t, 0.0f, 1.0f);
+
+    struct Stop {
+        float p;
+        glm::vec3 c;
+    };
+
+    static const Stop stops[] = {
+        {0.0f, {0.0f, 0.0f, 0.0f}},
+        {0.15f,{0.15f, 0.0f, 0.3f}},
+        {0.35f,{0.5f, 0.0f, 0.6f}},
+        {0.55f,{0.9f, 0.1f, 0.2f}},
+        {0.75f,{1.0f, 0.5f, 0.0f}},
+        {0.9f, {1.0f, 0.9f, 0.1f}},
+        {1.0f, {1.0f, 1.0f, 1.0f}}
+    };
+
+    for (int i = 0; i < 6; ++i)
+    {
+        if (t >= stops[i].p && t <= stops[i + 1].p)
+        {
+            float local =
+                (t - stops[i].p) /
+                (stops[i + 1].p - stops[i].p);
+
+            return glm::mix(
+                stops[i].c,
+                stops[i + 1].c,
+                local
+            );
+        }
+    }
+
+    return stops[6].c;
+}
 
 /*
 
@@ -504,7 +587,7 @@ struct ParticleSystem {
         // Find Max Density empirically to normalize our rejection threshold
         double maxDensity = 0.0;
 
-        for (int i = 0 ; i < 5000; i++) {
+        for (int i = 0 ; i < 10000; i++) {
             double x = distPos(rng);
             double y = distPos(rng);
             double z = distPos(rng);
@@ -540,11 +623,23 @@ struct ParticleSystem {
             if ( roll < density) {
                 positions.push_back(glm::vec3(x,y,z));
 
-                // Color based on radius 
-                float t = (float)(r / rMax);
-                colors.push_back({ 0.2f + 0.8f * t, 0.4f - 0.4f * t, 0.9f - 0.7f * t });
+                // Color 
+                float intensity =
+                    (float)(density / maxDensity);
+
+                // boost faint regions
+                intensity = std::pow(intensity, 0.35f);
+
+                // clamp
+                intensity = glm::clamp(intensity, 0.0f, 1.0f);
+
+                colors.push_back(
+                    heatmapInferno(intensity)
+                );
             }
         }
+         std::cout << "Orbital n=" << n << " l=" << l << " m=" << m
+                  << "  sampled " << positions.size() << "/" << N << " particles\n";
     }
  
     // void generateRandom(int N, float spread)
@@ -580,7 +675,7 @@ struct ParticleSystem {
 int main() {
 
 
-    Engine engine(1800,1000,"");
+    Engine engine(SCR_W, SCR_H, "Hydrogen Orbital  |  Arrows=n/l   ,/.=m   -/+=particles");
     // ── Camera + callbacks ──────────────────────
     Camera camera;
     glfwSetWindowUserPointer(engine.window, &camera);
@@ -589,10 +684,12 @@ int main() {
     glfwSetScrollCallback(engine.window,          cb_scroll);
     glfwSetKeyCallback(engine.window,             cb_key);
     glfwSetFramebufferSizeCallback(engine.window, cb_resize);
- 
+    
     ParticleSystem particles;
     // particles.generateRandom(5000, 15.0f);
-    particles.sampleWaveFunction(3, 1, 0, 5000 , 1.0);
+
+
+    particles.sampleWaveFunction(4, 2 , 0, 10000 , 1.0);
 
     glm::vec3 lightPos(20.0f, 20.0f, 20.0f);
     
@@ -610,7 +707,7 @@ int main() {
         glUniform3fv(engine.uViewPos,  1, glm::value_ptr(camera.position()));
  
         for (int i = 0; i < particles.size(); ++i)
-            engine.drawSphere(particles.positions[i], particles.colors[i], 0.3f);
+            engine.drawSphere(particles.positions[i], particles.colors[i], 0.16f);
  
         glfwSwapBuffers(engine.window);
     }
