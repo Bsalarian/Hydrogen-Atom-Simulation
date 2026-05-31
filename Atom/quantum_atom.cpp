@@ -55,6 +55,7 @@ gl_Position=projection⋅view⋅model⋅vec4(aPos,1.0)
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
+#include <sstream>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -73,6 +74,17 @@ gl_Position=projection⋅view⋅model⋅vec4(aPos,1.0)
 
 static const int SCR_W = 1800;
 static const int SCR_H = 1200;
+
+// =====================================================
+// ORBITAL STATE  (shared between callbacks and main)
+// =====================================================
+
+struct OrbitalState {
+    int  n = 4, l = 2, m = 0;
+    int  N = 10000;
+    bool trigger_resample = true;   // set true when params change → triggers resample
+};
+
 
 // =====================================================
 // SHADERS
@@ -330,38 +342,100 @@ struct Camera {
     }
 };
 
+// =====================================================
+// WINDOW STATE  (camera + orbital, passed via user ptr)
+// =====================================================
 
+struct WindowState {
+    Camera*       cam;
+    OrbitalState* orb;
+};
 
 // ─────────────────────────────────────────────
 //  GLFW CALLBACKS
 //  We store the Camera pointer in the window's user pointer.
 // ─────────────────────────────────────────────
-static void cb_mouseButton(GLFWwindow* win, int button, int action, int /*mods*/)
+static void cb_mouseButton(GLFWwindow* win, int button, int action, int)
 {
-    auto* cam = static_cast<Camera*>(glfwGetWindowUserPointer(win));
-    cam->onMouseButton(button, action, win);
+    auto* ws = static_cast<WindowState*>(glfwGetWindowUserPointer(win));
+    ws->cam->onMouseButton(button, action, win);
 }
 static void cb_mouseMove(GLFWwindow* win, double x, double y)
 {
-    auto* cam = static_cast<Camera*>(glfwGetWindowUserPointer(win));
-    cam->onMouseMove(x, y);
+    auto* ws = static_cast<WindowState*>(glfwGetWindowUserPointer(win));
+    ws->cam->onMouseMove(x, y);
 }
 static void cb_scroll(GLFWwindow* win, double dx, double dy)
 {
-    auto* cam = static_cast<Camera*>(glfwGetWindowUserPointer(win));
-    cam->onScroll(dx, dy);
+    auto* ws = static_cast<WindowState*>(glfwGetWindowUserPointer(win));
+    ws->cam->onScroll(dx, dy);
 }
-static void cb_key(GLFWwindow* win, int key, int /*scan*/, int action, int /*mods*/)
-{
-    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
-        glfwSetWindowShouldClose(win, GLFW_TRUE);
+// Helper for valid quantum numbers
+static void clampQuantumNumbers(OrbitalState& orb)
+{   
+    // Let's still have fun tho, fuck some limits.
+    // if (orb.n < 1) orb.n = 1; 
+    // if (orb.n > 7) orb.n = 7;
+    if (orb.l < 0)       orb.l = 0;
+    if (orb.l > orb.n-1) orb.l = orb.n - 1;
+    if (orb.m < -orb.l)  orb.m = -orb.l;
+    if (orb.m >  orb.l)  orb.m =  orb.l;
+    // if (orb.N < 500)    orb.N = 500;
+    // if (orb.N > 100000) orb.N = 100000;
 }
-static void cb_resize(GLFWwindow* /*win*/, int w, int h)
+
+static void cb_resize(GLFWwindow*, int w, int h)
 {
     glViewport(0, 0, w, h);
 }
- 
 
+
+static void cb_key(GLFWwindow* win, int key, int, int action, int)
+{
+    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
+        glfwSetWindowShouldClose(win, GLFW_TRUE);
+        return;
+    }
+    // Only act on press or repeat (held key)
+    if (action != GLFW_PRESS && action != GLFW_REPEAT) return;
+
+    auto* ws  = static_cast<WindowState*>(glfwGetWindowUserPointer(win));
+    OrbitalState& orb = *ws->orb;
+
+    bool changed = false;
+
+    // n - Principal quantum number
+    if (key == GLFW_KEY_UP) {orb.n++; changed = true; }
+    if (key == GLFW_KEY_DOWN) {orb.n--; changed = true; }
+
+    // l - Azimuthal quantum number
+    if (key == GLFW_KEY_RIGHT) {orb.l++; changed = true; }
+    if (key == GLFW_KEY_LEFT) {orb.l--; changed = true; }
+
+    // n - Magnetic quantum number
+    if (key == GLFW_KEY_A) {orb.m++; changed = true; }
+    if (key == GLFW_KEY_D) {orb.m--; changed = true; }
+
+    // N  — particle count  (minus = halve, equals/plus = double)
+    if (key == GLFW_KEY_W) { orb.N /= 2; changed = true; }
+    if (key == GLFW_KEY_S) { orb.N *= 2; changed = true; }
+
+
+    if (changed) {
+        // clamp it
+        clampQuantumNumbers(orb);
+        orb.trigger_resample = true;
+
+        std::ostringstream ss;
+        ss << "Hydrogen Orbital  |  n=" << orb.n
+           << "  l=" << orb.l
+           << "  m=" << orb.m
+           << "  N=" << orb.N
+           << "  |  Arrows=n/l   ,/.=m   -/+=particles";
+           glfwSetWindowTitle(win, ss.str().c_str());
+    }
+
+}
 // ENGINE  — owns window, GL context, shader, sphere mesh, uniform locs
 // =====================================================================
 struct Engine {
@@ -676,13 +750,16 @@ int main() {
 
 
     Engine engine(SCR_W, SCR_H, "Hydrogen Orbital  |  Arrows=n/l   ,/.=m   -/+=particles");
+    // Orbital
+    OrbitalState orb;   
     // ── Camera + callbacks ──────────────────────
     Camera camera;
-    glfwSetWindowUserPointer(engine.window, &camera);
-    glfwSetMouseButtonCallback(engine.window,     cb_mouseButton);
-    glfwSetCursorPosCallback(engine.window,       cb_mouseMove);
-    glfwSetScrollCallback(engine.window,          cb_scroll);
-    glfwSetKeyCallback(engine.window,             cb_key);
+    WindowState ws{ &camera, &orb };
+    glfwSetWindowUserPointer(engine.window, &ws);
+    glfwSetMouseButtonCallback   (engine.window, cb_mouseButton);
+    glfwSetCursorPosCallback     (engine.window, cb_mouseMove);
+    glfwSetScrollCallback        (engine.window, cb_scroll);
+    glfwSetKeyCallback           (engine.window, cb_key);
     glfwSetFramebufferSizeCallback(engine.window, cb_resize);
     
     ParticleSystem particles;
@@ -696,6 +773,17 @@ int main() {
     while (!glfwWindowShouldClose(engine.window))
     {
         glfwPollEvents();
+
+        // ── Resample only when parameters changed ──────────────
+        if (orb.trigger_resample) {
+            particles.sampleWaveFunction(orb.n, orb.l, orb.m, orb.N);
+            orb.trigger_resample = false;
+
+            // Zoom camera to fit the orbital
+            float rMax = (float)((orb.n * orb.n + 3.0 * orb.n));
+            camera.radius = rMax * 2.6f;
+        }
+
         engine.beginFrame();
  
         glm::mat4 view       = camera.viewMatrix();
