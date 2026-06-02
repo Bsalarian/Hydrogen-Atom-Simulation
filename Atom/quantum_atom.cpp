@@ -284,8 +284,6 @@ static Mesh buildSphereMesh(float radius, int stacks, int sectors){
     return mesh;
 }
 
-
-
 // ─────────────────────────────────────────────
 //  ORBIT CAMERA
 //  Stored as: radius, azimuth (yaw), elevation (pitch).
@@ -404,22 +402,22 @@ static void cb_key(GLFWwindow* win, int key, int, int action, int)
 
     bool changed = false;
 
+    
     // n - Principal quantum number
     if (key == GLFW_KEY_UP) {orb.n++; changed = true; }
     if (key == GLFW_KEY_DOWN) {orb.n--; changed = true; }
 
     // l - Azimuthal quantum number
-    if (key == GLFW_KEY_RIGHT) {orb.l++; changed = true; }
-    if (key == GLFW_KEY_LEFT) {orb.l--; changed = true; }
+    if (key == GLFW_KEY_RIGHT) { orb.l = std::min(orb.l + 1, orb.n - 1); changed = true; }
+    if (key == GLFW_KEY_LEFT)  { orb.l = std::max(orb.l - 1, 0);         changed = true; }
 
     // n - Magnetic quantum number
-    if (key == GLFW_KEY_A) {orb.m++; changed = true; }
-    if (key == GLFW_KEY_D) {orb.m--; changed = true; }
+    if (key == GLFW_KEY_D)     { orb.m = std::min(orb.m + 1, orb.l);  changed = true; }
+    if (key == GLFW_KEY_A)     { orb.m = std::max(orb.m - 1, -orb.l); changed = true; }
 
     // N  — particle count  (minus = halve, equals/plus = double)
-    if (key == GLFW_KEY_W) { orb.N /= 2; changed = true; }
-    if (key == GLFW_KEY_S) { orb.N *= 2; changed = true; }
-
+    if (key == GLFW_KEY_S) { orb.N /= 2; changed = true; }
+    if (key == GLFW_KEY_W) { orb.N *= 2; changed = true; }
 
     if (changed) {
         // clamp it
@@ -434,8 +432,8 @@ static void cb_key(GLFWwindow* win, int key, int, int action, int)
            << "  |  Arrows=n/l   ,/.=m   -/+=particles";
            glfwSetWindowTitle(win, ss.str().c_str());
     }
-
 }
+
 // ENGINE  — owns window, GL context, shader, sphere mesh, uniform locs
 // =====================================================================
 struct Engine {
@@ -568,6 +566,17 @@ glm::vec3 heatmapInferno(float t)
     return stops[6].c;
 }
 
+struct Particle {
+    glm::vec3 pos;
+    glm::vec3 color;
+
+    // spherical coordinates
+    float r;        // Radial distance
+    float theta;    // Polar angle from y axis
+    float phi;      // Azimuthal angle in xz-plane
+};
+
+
 /*
 
 Reference: 
@@ -605,8 +614,7 @@ We will use the Von Neumann Rejection Sampling instead of the CDF sampling.
 
 
 struct ParticleSystem {
-    std::vector<glm::vec3> positions;
-    std::vector<glm::vec3> colors;
+    std::vector<Particle> particles ;
     std::mt19937 rng{42};
 
 
@@ -651,8 +659,8 @@ struct ParticleSystem {
     }
 
     void sampleWaveFunction(int n, int l , int m, int N, double Z = 1.0){
-        positions.clear();
-        colors.clear();
+        particles.clear();
+        particles.reserve(N);
         
         // Define bounding box size 
         double rMax = (n *n +3.0*n) / Z;
@@ -681,39 +689,45 @@ struct ParticleSystem {
 
         std::uniform_real_distribution<double> distProb(0.0 , maxDensity);
 
-        while (positions.size() < N) {
+        int attempts = 0;
+        while ((int) particles.size() < N) {
+            ++attempts;
             double x = distPos(rng);
             double y = distPos(rng);
             double z = distPos(rng);
             double r = std::sqrt(x*x + y*y + z*z);
 
-            // Keep only points inside the spherical bounding volume
-            if (r > rMax) continue;
+            if (r > rMax) continue; // Outside bounding sphere
 
             double density = evaluateDensity(x,y,z,n,l,m,Z);
             double roll = distProb(rng);
 
             // Accept the particle if random roll falls under the density curve
             if ( roll < density) {
-                positions.push_back(glm::vec3(x,y,z));
+                Particle p;
+                p.pos = glm::vec3(x,y,z);
 
+                // Store spherical coords so the current update is exact
+                p.r = (float)r;
+                p.theta = (float)std::acos(y / r);
+                p.phi = (float)std::atan2(z,x);
+                
                 // Color 
-                float intensity =
-                    (float)(density / maxDensity);
-
+                float intensity = (float)(density / maxDensity);
                 // boost faint regions
                 intensity = std::pow(intensity, 0.35f);
-
                 // clamp
                 intensity = glm::clamp(intensity, 0.0f, 1.0f);
+                p.color = heatmapInferno(intensity);
 
-                colors.push_back(
-                    heatmapInferno(intensity)
-                );
+                particles.push_back(p);
             }
         }
-         std::cout << "Orbital n=" << n << " l=" << l << " m=" << m
-                  << "  sampled " << positions.size() << "/" << N << " particles\n";
+
+        float acceptance = 100.f * N / attempts;
+        std::cout << "n=" << n << " l=" << l << " m=" << m
+                << "  particles=" << N
+                << "  acceptance=" << acceptance << "%\n";
     }
  
     // void generateRandom(int N, float spread)
@@ -732,19 +746,14 @@ struct ParticleSystem {
     //                 (rand() / (float)RAND_MAX) * 2.0f - 1.0f
     //             );
     //         } while (glm::length(p) > 1.0f);
- 
     //         positions.push_back(p * spread);
- 
     //         // Color: purple at centre → orange at edge (mimics density heatmap)
     //         float t = glm::length(p);
     //         colors.push_back({ 0.3f + 0.7f * t, 0.1f + 0.2f * t, 0.9f - 0.6f * t });
     //     }
     // }
- 
-    int size() const { return (int)positions.size(); }
+
 };
-
-
 
 int main() {
 
@@ -766,7 +775,7 @@ int main() {
     // particles.generateRandom(5000, 15.0f);
 
 
-    particles.sampleWaveFunction(4, 2 , 0, 10000 , 1.0);
+    particles.sampleWaveFunction(1, 0, 0, 80000 , 1.0);
 
     glm::vec3 lightPos(20.0f, 20.0f, 20.0f);
     
@@ -794,8 +803,8 @@ int main() {
         glUniform3fv(engine.uLightPos, 1, glm::value_ptr(lightPos));
         glUniform3fv(engine.uViewPos,  1, glm::value_ptr(camera.position()));
  
-        for (int i = 0; i < particles.size(); ++i)
-            engine.drawSphere(particles.positions[i], particles.colors[i], 0.16f);
+        for (Particle& p : particles.particles)
+            engine.drawSphere(p.pos , p.color , 0.16f);
  
         glfwSwapBuffers(engine.window);
     }
