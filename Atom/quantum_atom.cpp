@@ -121,46 +121,14 @@ static const char* FRAG_SRC = R"glsl(
 #version 330 core
 
 in vec3 fragPos;
-in vec3 fragNormal;
-
 uniform vec3 objectColor;
-uniform vec3 lightPos;
-uniform vec3 viewPos;
 
 out vec4 fragColor;
 
 void main()
 {
-    vec3 N = normalize(fragNormal);
-    vec3 L = normalize(lightPos - fragPos);
-
-    // softer ambient
-    float ambientStrength = 0.25;
-    vec3 ambient = ambientStrength * objectColor;
-
-    // softer diffuse with minimum floor
-    float diff = max(dot(N, L), 0.0);
-    diff = 0.35 + diff * 1.2;
-
-    vec3 diffuse = diff * objectColor;
-
-    // softer specular
-    vec3 V = normalize(viewPos - fragPos);
-    vec3 H = normalize(L + V);
-
-    float spec = pow(max(dot(N, H), 0.0), 12.0);
-
-    vec3 specular = vec3(1.0) * spec * 0.02;
-
-    vec3 finalColor = ambient + diffuse + specular;
-
-    // Reinhard tone mapping
-    finalColor = finalColor / (finalColor + vec3(1.0));
-    
-    // gamma correction
-    finalColor = pow(finalColor, vec3(1.0 / 2.2));
-
-    fragColor = vec4(finalColor, 0.8);
+    vec3 glowColor = objectColor * 4.5;
+    fragColor = vec4(glowColor, 0.05); 
 }
 )glsl";
 
@@ -467,11 +435,7 @@ struct Engine {
         glEnable(GL_DEPTH_TEST);
 
         glEnable(GL_BLEND);
-
-        glBlendFunc(
-            GL_SRC_ALPHA,
-            GL_ONE_MINUS_SRC_ALPHA
-        );
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
         glClearColor(0.01f, 0.01f, 0.03f, 1.0f);
 
 
@@ -634,9 +598,8 @@ struct ParticleSystem {
         // The Laguerre polynomial L for generating alternating peaks and valleys of density.
 
         double rho = (2.0 * r) /n; // for a0=1.0 aka hydrogen
-
-        double constant = std::sqrt( std::pow(2.0 / n , 3) * (std::tgamma(n - l -1) / ( 2.0 * n * std::tgamma(n+l))));
-
+        // https://en.wikipedia.org/wiki/Gamma_function Gamma (x+1 interpolates the factorial function to non-integer values.
+        double constant = std::sqrt( std::pow(2.0 / n , 3) * (std::tgamma(n - l) / ( 2.0 * n * std::tgamma(n+l)))); 
         double radial = constant * std::exp(-rho / 2.0) * std::pow(rho ,l) * std::assoc_laguerre(n-l-1 , 2.0 * l +1 , rho);
 
 
@@ -775,7 +738,7 @@ int main() {
     // particles.generateRandom(5000, 15.0f);
 
 
-    particles.sampleWaveFunction(1, 0, 0, 80000 , 1.0);
+    particles.sampleWaveFunction(4, 1, 0, 80000 , 1.0);
 
     glm::vec3 lightPos(20.0f, 20.0f, 20.0f);
     
