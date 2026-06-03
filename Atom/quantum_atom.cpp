@@ -75,15 +75,6 @@ gl_Position=projection⋅view⋅model⋅vec4(aPos,1.0)
 static const int SCR_W = 1800;
 static const int SCR_H = 1200;
 
-// =====================================================
-// ORBITAL STATE  (shared between callbacks and main)
-// =====================================================
-
-struct OrbitalState {
-    int  n = 4, l = 2, m = 0;
-    int  N = 10000;
-    bool trigger_resample = true;   // set true when params change → triggers resample
-};
 
 
 // =====================================================
@@ -349,99 +340,7 @@ struct Camera {
     }
 };
 
-// =====================================================
-// WINDOW STATE  (camera + orbital, passed via user ptr)
-// =====================================================
 
-struct WindowState {
-    Camera*       cam;
-    OrbitalState* orb;
-};
-
-// ─────────────────────────────────────────────
-//  GLFW CALLBACKS
-//  We store the Camera pointer in the window's user pointer.
-// ─────────────────────────────────────────────
-static void cb_mouseButton(GLFWwindow* win, int button, int action, int)
-{
-    auto* ws = static_cast<WindowState*>(glfwGetWindowUserPointer(win));
-    ws->cam->onMouseButton(button, action, win);
-}
-static void cb_mouseMove(GLFWwindow* win, double x, double y)
-{
-    auto* ws = static_cast<WindowState*>(glfwGetWindowUserPointer(win));
-    ws->cam->onMouseMove(x, y);
-}
-static void cb_scroll(GLFWwindow* win, double dx, double dy)
-{
-    auto* ws = static_cast<WindowState*>(glfwGetWindowUserPointer(win));
-    ws->cam->onScroll(dx, dy);
-}
-// Helper for valid quantum numbers
-static void clampQuantumNumbers(OrbitalState& orb)
-{   
-    // Let's still have fun tho, fuck some limits.
-    // if (orb.n < 1) orb.n = 1; 
-    // if (orb.n > 7) orb.n = 7;
-    if (orb.l < 0)       orb.l = 0;
-    if (orb.l > orb.n-1) orb.l = orb.n - 1;
-    if (orb.m < -orb.l)  orb.m = -orb.l;
-    if (orb.m >  orb.l)  orb.m =  orb.l;
-    // if (orb.N < 500)    orb.N = 500;
-    // if (orb.N > 100000) orb.N = 100000;
-}
-
-static void cb_resize(GLFWwindow*, int w, int h)
-{
-    glViewport(0, 0, w, h);
-}
-
-
-static void cb_key(GLFWwindow* win, int key, int, int action, int)
-{
-    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
-        glfwSetWindowShouldClose(win, GLFW_TRUE);
-        return;
-    }
-    // Only act on press or repeat (held key)
-    if (action != GLFW_PRESS && action != GLFW_REPEAT) return;
-
-    auto* ws  = static_cast<WindowState*>(glfwGetWindowUserPointer(win));
-    OrbitalState& orb = *ws->orb;
-
-    bool changed = false;
-
-    
-    // n - Principal quantum number
-    if (key == GLFW_KEY_UP) {orb.n++; changed = true; }
-    if (key == GLFW_KEY_DOWN) {orb.n--; changed = true; }
-
-    // l - Azimuthal quantum number
-    if (key == GLFW_KEY_RIGHT) { orb.l = std::min(orb.l + 1, orb.n - 1); changed = true; }
-    if (key == GLFW_KEY_LEFT)  { orb.l = std::max(orb.l - 1, 0);         changed = true; }
-
-    // n - Magnetic quantum number
-    if (key == GLFW_KEY_D)     { orb.m = std::min(orb.m + 1, orb.l);  changed = true; }
-    if (key == GLFW_KEY_A)     { orb.m = std::max(orb.m - 1, -orb.l); changed = true; }
-
-    // N  — particle count  (minus = halve, equals/plus = double)
-    if (key == GLFW_KEY_S) { orb.N /= 2; changed = true; }
-    if (key == GLFW_KEY_W) { orb.N *= 2; changed = true; }
-
-    if (changed) {
-        // clamp it
-        clampQuantumNumbers(orb);
-        orb.trigger_resample = true;
-
-        std::ostringstream ss;
-        ss << "Hydrogen Orbital  |  n=" << orb.n
-           << "  l=" << orb.l
-           << "  m=" << orb.m
-           << "  N=" << orb.N
-           << "  |  Arrows=n/l   ,/.=m   -/+=particles";
-           glfwSetWindowTitle(win, ss.str().c_str());
-    }
-}
 
 // ENGINE  — owns window, GL context, shader, sphere mesh, uniform locs
 // =====================================================================
@@ -779,7 +678,160 @@ struct ParticleSystem {
     //     }
     // }
 
+
+        // ── Probability current update ────────────────────────────────────
+    //
+    // The quantum probability current for hydrogen eigenstates only has
+    // a φ-component (it swirls around the y-axis):
+    //
+    //   J_φ = ℏm / (m_e · r · sinθ)
+    //
+    // In Cartesian, the φ-direction unit vector at azimuth φ is:
+    //   φ̂ = (-sinφ, 0, cosφ)
+    //
+    // So the velocity is:
+    //   v = J_φ · φ̂  =  (ℏm / r·sinθ) · (-sinφ, 0, cosφ)
+    //
+    // Rather than applying this as a Cartesian step (which drifts off
+    // the shell over time), we do what the reference code does:
+    //   1. Compute the Cartesian step
+    //   2. Extract the new φ from the stepped position
+    //   3. Reconstruct position exactly at the original (r, θ, new φ)
+    //
+    // This keeps every particle locked to its sampled shell forever.
+    // The only thing that changes is φ — the particle orbits the y-axis.
+    //
+    void updateProbabilityCurrent(int m_quantum, float dt) {
+        if (m_quantum == 0) return;  // no current, no motion
+ 
+        for (Particle& p : particles) {
+            // ── Method: advance φ directly (most stable) ─────────────
+            // ω = ℏm / (m_e · r · sinθ)   [atomic units: ℏ=m_e=1]
+            float sinTheta = std::sin(p.theta);
+            if (sinTheta < 1e-4f) sinTheta = 1e-4f;
+ 
+            float omega = (float)m_quantum / (p.r * sinTheta);
+            p.phi += omega * dt;
+ 
+            // Reconstruct Cartesian from (r, theta, new phi) — no drift
+            p.pos = glm::vec3(
+                p.r * std::sin(p.theta) * std::cos(p.phi),
+                p.r * std::cos(p.theta),
+                p.r * std::sin(p.theta) * std::sin(p.phi)
+            );
+        }
+    }
 };
+
+
+// =====================================================
+// ORBITAL STATE  (shared between callbacks and main)
+// =====================================================
+
+struct OrbitalState {
+    int  n = 3, l = 0, m = 0;
+    int  N = 10000;
+    bool trigger_resample = true;   // set true when params change → triggers resample
+    bool cutaway = false;
+    ParticleSystem* ps = nullptr;
+};
+
+
+// =====================================================
+// WINDOW STATE  (camera + orbital, passed via user ptr)
+// =====================================================
+
+struct WindowState {
+    Camera*       cam;
+    OrbitalState* orb;
+};
+
+
+
+// ─────────────────────────────────────────────
+//  GLFW CALLBACKS
+//  We store the Camera pointer in the window's user pointer.
+// ─────────────────────────────────────────────
+static void cb_mouseButton(GLFWwindow* win, int button, int action, int)
+{
+    auto* ws = static_cast<WindowState*>(glfwGetWindowUserPointer(win));
+    ws->cam->onMouseButton(button, action, win);
+}
+static void cb_mouseMove(GLFWwindow* win, double x, double y)
+{
+    auto* ws = static_cast<WindowState*>(glfwGetWindowUserPointer(win));
+    ws->cam->onMouseMove(x, y);
+}
+static void cb_scroll(GLFWwindow* win, double dx, double dy)
+{
+    auto* ws = static_cast<WindowState*>(glfwGetWindowUserPointer(win));
+    ws->cam->onScroll(dx, dy);
+}
+// Helper for valid quantum numbers
+static void clampQuantumNumbers(OrbitalState& orb)
+{   
+    // Let's still have fun tho, fuck some limits.
+    // if (orb.n < 1) orb.n = 1; 
+    // if (orb.n > 7) orb.n = 7;
+    if (orb.l < 0)       orb.l = 0;
+    if (orb.l > orb.n-1) orb.l = orb.n - 1;
+    if (orb.m < -orb.l)  orb.m = -orb.l;
+    if (orb.m >  orb.l)  orb.m =  orb.l;
+    // if (orb.N < 500)    orb.N = 500;
+    // if (orb.N > 100000) orb.N = 100000;
+}
+
+static void cb_resize(GLFWwindow*, int w, int h)
+{
+    glViewport(0, 0, w, h);
+}
+
+
+static void cb_key(GLFWwindow* win, int key, int, int action, int)
+{
+    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
+        glfwSetWindowShouldClose(win, GLFW_TRUE);
+        return;
+    }
+    // Only act on press or repeat (held key)
+    if (action != GLFW_PRESS && action != GLFW_REPEAT) return;
+
+    auto* ws  = static_cast<WindowState*>(glfwGetWindowUserPointer(win));
+    OrbitalState& orb = *ws->orb;
+
+    bool changed = false;
+
+    
+    // n - Principal quantum number
+    if (key == GLFW_KEY_UP) {orb.n++; changed = true; }
+    if (key == GLFW_KEY_DOWN) {orb.n--; changed = true; }
+
+    // l - Azimuthal quantum number
+    if (key == GLFW_KEY_RIGHT) { orb.l = std::min(orb.l + 1, orb.n - 1); changed = true; }
+    if (key == GLFW_KEY_LEFT)  { orb.l = std::max(orb.l - 1, 0);         changed = true; }
+
+    // n - Magnetic quantum number
+    if (key == GLFW_KEY_D)     { orb.m = std::min(orb.m + 1, orb.l);  changed = true; }
+    if (key == GLFW_KEY_A)     { orb.m = std::max(orb.m - 1, -orb.l); changed = true; }
+
+    // N  — particle count  (minus = halve, equals/plus = double)
+    if (key == GLFW_KEY_S) { orb.N /= 2; changed = true; }
+    if (key == GLFW_KEY_W) { orb.N *= 2; changed = true; }
+
+    if (changed) {
+        // clamp it
+        clampQuantumNumbers(orb);
+        orb.trigger_resample = true;
+
+        std::ostringstream ss;
+        ss << "Hydrogen Orbital  |  n=" << orb.n
+           << "  l=" << orb.l
+           << "  m=" << orb.m
+           << "  N=" << orb.N
+           << "  |  Arrows=n/l   ,/.=m   -/+=particles";
+           glfwSetWindowTitle(win, ss.str().c_str());
+    }
+}
 
 int main() {
 
@@ -798,12 +850,14 @@ int main() {
     glfwSetFramebufferSizeCallback(engine.window, cb_resize);
     
     ParticleSystem particles;
+    orb.ps = &particles;
     // particles.generateRandom(5000, 15.0f);
 
-
+ 
+    glm::vec3 lightPos(50.f, 50.f, 50.f);
+    const float dt = 0.016f;
     particles.sampleWaveFunction(4, 1, 0, 40000 , 1.0);
 
-    glm::vec3 lightPos(20.0f, 20.0f, 20.0f);
     
     while (!glfwWindowShouldClose(engine.window))
     {
@@ -818,6 +872,8 @@ int main() {
             float rMax = (float)((orb.n * orb.n + 3.0 * orb.n));
             camera.radius = rMax * 2.6f;
         }
+
+        particles.updateProbabilityCurrent(orb.m, dt);
 
         engine.beginFrame();
  
