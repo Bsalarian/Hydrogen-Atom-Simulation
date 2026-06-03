@@ -116,19 +116,60 @@ void main()
     gl_Position = projection * view * world;
 }
 )glsl";
- 
-static const char* FRAG_SRC = R"glsl(
+ static const char* FRAG_SRC = R"glsl(
 #version 330 core
 
 in vec3 fragPos;
+in vec3 fragNormal;
+
 uniform vec3 objectColor;
+uniform vec3 lightPos;
+uniform vec3 viewPos;
 
 out vec4 fragColor;
 
 void main()
 {
-    vec3 glowColor = objectColor * 4.5;
-    fragColor = vec4(glowColor, 0.05); 
+    vec3 N = normalize(fragNormal);
+    vec3 L = normalize(lightPos - fragPos);
+    vec3 V = normalize(viewPos - fragPos);
+
+    //----------------------------------------
+    // CEL SHADED LIGHTING
+    //----------------------------------------
+
+    float diff = max(dot(N, L), 0.0);
+
+    if(diff > 0.85)
+        diff = 1.0;
+    else if(diff > 0.45)
+        diff = 0.65;
+    else
+        diff = 0.25;
+
+    vec3 color = objectColor * diff;
+
+    //----------------------------------------
+    // FRESNEL OUTLINE
+    //----------------------------------------
+
+    float fresnel =
+        pow(
+            1.0 - max(dot(V, N), 0.0),
+            4.0
+        );
+
+    vec3 outlineColor = vec3(0.03, 0.03, 0.06);
+
+    color = mix(color, outlineColor, fresnel);
+
+    //----------------------------------------
+    // SOFT EMISSION
+    //----------------------------------------
+
+    color += objectColor * 0.35;
+
+    fragColor = vec4(color, 0.45);
 }
 )glsl";
 
@@ -436,8 +477,7 @@ struct Engine {
 
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-        glClearColor(0.01f, 0.01f, 0.03f, 1.0f);
-
+        glClearColor(0.06f, 0.09f, 0.12f, 1.0f);
 
         shader       = buildShaderProgram();
         uModel       = glGetUniformLocation(shader, "model");
@@ -491,6 +531,23 @@ struct Engine {
     }
 };
 
+glm::vec3 orbitalPalette(float t)
+{
+    t = glm::clamp(t, 0.0f, 1.0f);
+
+    glm::vec3 c0(0.45f,0.85f,1.0f);
+    glm::vec3 c1(0.85f,0.35f,1.0f);
+    glm::vec3 c2(1.00f,0.25f,0.85f);
+
+    if(t < 0.5f)
+        return glm::mix(c0,c1,t*2.0f);
+
+    return glm::mix(
+        c1,
+        c2,
+        (t-0.5f)*2.0f
+    );
+}
 
 glm::vec3 heatmapInferno(float t)
 {
@@ -650,6 +707,11 @@ struct ParticleSystem {
         //     Else the x value is a sample from the desired distribution.
 
 
+        // Von Neumann was good for first implementation, but highly inefficient. Replaced with CDF.
+
+        //
+
+
         std::uniform_real_distribution<double> distProb(0.0 , maxDensity);
 
         int attempts = 0;
@@ -682,6 +744,7 @@ struct ParticleSystem {
                 // clamp
                 intensity = glm::clamp(intensity, 0.0f, 1.0f);
                 p.color = heatmapInferno(intensity);
+                // p.color = orbitalPalette(intensity);
 
                 particles.push_back(p);
             }
@@ -738,7 +801,7 @@ int main() {
     // particles.generateRandom(5000, 15.0f);
 
 
-    particles.sampleWaveFunction(4, 1, 0, 80000 , 1.0);
+    particles.sampleWaveFunction(4, 1, 0, 40000 , 1.0);
 
     glm::vec3 lightPos(20.0f, 20.0f, 20.0f);
     
@@ -765,9 +828,26 @@ int main() {
         glUniformMatrix4fv(engine.uProjection, 1, GL_FALSE, glm::value_ptr(projection));
         glUniform3fv(engine.uLightPos, 1, glm::value_ptr(lightPos));
         glUniform3fv(engine.uViewPos,  1, glm::value_ptr(camera.position()));
- 
+
+        // Add proton
+        float pulse = 0.45f + 0.45f * sin((float)glfwGetTime() * 2.0f);
+        float protonScale = 0.35f + pulse * 0.15f;
+        
+        engine.drawSphere(
+            glm::vec3(0),
+            glm::vec3(1.0f,0.2f,0.15f),
+            protonScale
+        );
+
+        engine.drawSphere(
+            glm::vec3(0),
+            glm::vec3(1.0f,0.25f,0.15f),
+            protonScale * 1.4f
+        );
+
+        // Add electron probability cloud
         for (Particle& p : particles.particles)
-            engine.drawSphere(p.pos , p.color , 0.16f);
+            engine.drawSphere(p.pos , p.color , 0.2f);
  
         glfwSwapBuffers(engine.window);
     }
