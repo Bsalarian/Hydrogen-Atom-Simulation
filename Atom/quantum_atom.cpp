@@ -296,7 +296,7 @@ struct Camera {
     float elevation = (float)M_PI / 4.0f;      // vertical angle, radians
  
     float orbitSpeed = 0.005f;
-    float zoomSpeed  = 1.5f;
+    float zoomSpeed  = 4.5f;
  
     bool  dragging = false;
     double lastX = 0, lastY = 0;
@@ -530,6 +530,9 @@ We will use the Von Neumann Rejection Sampling instead of the CDF sampling.
     calculating the probability density P at that point, and then rolling a random number between 0 and the maximum possible density.
     If your random roll is less than P, you spawn a particle.
     If not, you throw the point away and try again.
+
+
+Update: Von Neumann is very inefficent as we throw most points away. We swtiched to a CDF invesrse sampling.
 */
 
 
@@ -577,109 +580,209 @@ struct ParticleSystem {
         return psi * psi;
     }
 
-    void sampleWaveFunction(int n, int l , int m, int N, double Z = 1.0){
-        particles.clear();
-        particles.reserve(N);
+
+    // Use CDF sampling
+    //  Split our probability density into three independent 1D distrubitions
+    //  Radial Polar Azimuthal
+    //  For each dimension:
+    //      1) Discretize the math into an array of slices
+    //      2) Calculate the probability at each slice
+    //      3) Keep a running total to build a cumlative distribution function (CDF)
+    //      4) Normalize the array so the last value is exactly 1.0
+
+    void sampleWaveFunctionCDF(int n, int l , int m, int N, double Z = 1.0){
+
+    particles.clear();
+    particles.reserve(N);
+
+    const int RESOLUTION = 2000;
+    std::vector<double> cdf_r(RESOLUTION), cdf_theta(RESOLUTION), cdf_phi(RESOLUTION);
+    
+    // 1) Radial part
+    double rMax = (n * n + 3.0 * n) / Z * 1.5;
+    double sum_r = 0.0;
+
+    for (int i = 0; i < RESOLUTION; ++i) {
         
-        // Define bounding box size 
-        double rMax = (n *n +3.0*n) / Z;
-        std::uniform_real_distribution<double> distPos(-rMax , rMax);
-
-        // Find Max Density empirically to normalize our rejection threshold
-        double maxDensity = 0.0;
-
-        for (int i = 0 ; i < 10000; i++) {
-            double x = distPos(rng);
-            double y = distPos(rng);
-            double z = distPos(rng);
-            double density = evaluateDensity(x,y,z,n,l,m,Z);
-            if (density > maxDensity) maxDensity = density;
-        }
-
-        // Von Neumann Rejection Sampling
-        // https://en.wikipedia.org/wiki/Rejection_sampling 
-        //  1. Sample a point on the x axis from the proposal dist
-        //  2. Draw a vertical line at this x position , up to the y-value of the probability density function of the proposal distribution.
-        //  3. ample uniformly along this line. 
-        //     If the sampled value is greater than the value of the desired distribution at this vertical line, 
-        //                  reject the x value and return to step 1.
-        //     Else the x value is a sample from the desired distribution.
+        double r = i * (rMax / (RESOLUTION - 1));
+        if (r < 1e-6) { cdf_r[i] = 0; continue; }
+        double rho = (2.0 * r * Z) / n;
+        double R_val = std::exp(-rho / 2.0) * std::pow(rho, l) * std::assoc_laguerre(n - l - 1, 2.0 * l + 1, rho);
 
 
-        // Von Neumann was good for first implementation, but highly inefficient. Replaced with CDF.
-
-        //
-
-
-        std::uniform_real_distribution<double> distProb(0.0 , maxDensity);
-
-        int attempts = 0;
-        while ((int) particles.size() < N) {
-            ++attempts;
-            double x = distPos(rng);
-            double y = distPos(rng);
-            double z = distPos(rng);
-            double r = std::sqrt(x*x + y*y + z*z);
-
-            if (r > rMax) continue; // Outside bounding sphere
-
-            double density = evaluateDensity(x,y,z,n,l,m,Z);
-            double roll = distProb(rng);
-
-            // Accept the particle if random roll falls under the density curve
-            if ( roll < density) {
-                Particle p;
-                p.pos = glm::vec3(x,y,z);
-
-                // Store spherical coords so the current update is exact
-                p.r = (float)r;
-                p.theta = (float)std::acos(y / r);
-                p.phi = (float)std::atan2(z,x);
-                
-                // Color 
-                float intensity = (float)(density / maxDensity);
-                // boost faint regions
-                intensity = std::pow(intensity, 0.35f);
-                // clamp
-                intensity = glm::clamp(intensity, 0.0f, 1.0f);
-                p.color = heatmapInferno(intensity);
-                // p.color = orbitalPalette(intensity);
-
-                particles.push_back(p);
-            }
-        }
-
-        float acceptance = 100.f * N / attempts;
-        std::cout << "n=" << n << " l=" << l << " m=" << m
-                << "  particles=" << N
-                << "  acceptance=" << acceptance << "%\n";
+        // PDF = r^2 * |R(r)|^2
+        sum_r += (r * r) * (R_val * R_val);
+        cdf_r[i] = sum_r;
     }
- 
-    // void generateRandom(int N, float spread)
-    // {
-    //     positions.clear();
-    //     colors.clear();
-    //     srand(42);
-    //     for (int i = 0; i < N; ++i) {
-    //         // Rejection sample: keep only points inside unit sphere
-    //         // so density is uniform (not corner-heavy like a cube sample)
-    //         glm::vec3 p;
-    //         do {
-    //             p = glm::vec3(
-    //                 (rand() / (float)RAND_MAX) * 2.0f - 1.0f,
-    //                 (rand() / (float)RAND_MAX) * 2.0f - 1.0f,
-    //                 (rand() / (float)RAND_MAX) * 2.0f - 1.0f
-    //             );
-    //         } while (glm::length(p) > 1.0f);
-    //         positions.push_back(p * spread);
-    //         // Color: purple at centre → orange at edge (mimics density heatmap)
-    //         float t = glm::length(p);
-    //         colors.push_back({ 0.3f + 0.7f * t, 0.1f + 0.2f * t, 0.9f - 0.6f * t });
-    //     }
-    // }
+    
+    for (double& v : cdf_r) v /= sum_r; // Normalize to 1.0
 
+    // 2) Polar part
+    double sum_theta = 0.0;
+    for (int i = 0; i < RESOLUTION; ++i) {
+        double theta = i * (M_PI / (RESOLUTION - 1));
+        double Y_val = std::sph_legendre(l, std::abs(m), theta);
+        
+        // PDF = sin(theta) * |Y(theta)|^2
+        sum_theta += std::sin(theta) * (Y_val * Y_val);
+        cdf_theta[i] = sum_theta;
+    }
+    for (double& v : cdf_theta) v /= sum_theta; // Normalize to 1.0
 
-        // ── Probability current update ────────────────────────────────────
+    // 3) Azimuthal part
+    double sum_phi = 0.0;
+    for (int i = 0; i < RESOLUTION; ++i) {
+        double phi = i * (2.0 * M_PI / (RESOLUTION - 1));
+        
+        // Real spherical harmonics mapping
+        double Phi_val = 1.0;
+        if (m > 0) Phi_val = std::cos(m * phi);
+        else if (m < 0) Phi_val = std::sin(std::abs(m) * phi);
+        
+        sum_phi += (Phi_val * Phi_val);
+        cdf_phi[i] = sum_phi;
+    }
+    for (double& v : cdf_phi) v /= sum_phi;
+
+    // 4) now we find max density (for colors)
+    double maxDensity = 0.0;
+    std::uniform_real_distribution<double> distPos(-rMax, rMax);
+    for (int i = 0; i < 10000; i++) {
+        double x = distPos(rng);
+        double y = distPos(rng);
+        double z = distPos(rng);
+        double density = evaluateDensity(x, y, z, n, l, m, Z);
+        if (density > maxDensity) maxDensity = density;
+    }
+
+    // 5) sample particles using inverse transform
+    std::uniform_real_distribution<double> distU(0.0, 1.0);
+
+    for (int i = 0; i < N; ++i) {
+
+        // Roll random number and find index in CDF
+        double u_r = distU(rng);
+        auto it_r = std::lower_bound(cdf_r.begin(), cdf_r.end(), u_r);
+        double r = std::distance(cdf_r.begin(), it_r) * (rMax / (RESOLUTION - 1));
+        
+        double u_t = distU(rng);
+        auto it_t = std::lower_bound(cdf_theta.begin(), cdf_theta.end(), u_t);
+        double theta = std::distance(cdf_theta.begin(), it_t) * (M_PI / (RESOLUTION - 1));
+
+        double u_p = distU(rng);
+        auto it_p = std::lower_bound(cdf_phi.begin(), cdf_phi.end(), u_p);
+        double phi = std::distance(cdf_phi.begin(), it_p) * (2.0 * M_PI / (RESOLUTION - 1));
+
+        // Convert spherical to Cartesian
+        double y = r * std::cos(theta);
+        double x = r * std::sin(theta) * std::cos(phi);
+        double z = r * std::sin(theta) * std::sin(phi);
+
+        Particle p;
+        p.pos = glm::vec3(x, y, z);
+        p.r = (float)r;
+        p.theta = (float)theta;
+        p.phi = (float)phi;
+
+        // Color based on exact density
+        double density = evaluateDensity(x, y, z, n, l, m, Z);
+        float intensity = (float)(density / maxDensity);
+        intensity = std::pow(intensity, 0.35f); // Boost faint regions
+        intensity = glm::clamp(intensity, 0.0f, 1.0f);
+        p.color = heatmapInferno(intensity);
+
+        particles.push_back(p);
+    }
+
+    std::cout << "n=" << n << " l=" << l << " m=" << m
+                << "  particles=" << N
+                << "  acceptance=100% (CDF Sampling)\n";
+}   
+
+    // void sampleWaveFunctionVonNeumannRejectionSampling(int n, int l , int m, int N, double Z = 1.0){
+        //     particles.clear();
+        //     particles.reserve(N);   
+        //     // Define bounding box size 
+        //     double rMax = (n *n +3.0*n) / Z;
+        //     std::uniform_real_distribution<double> distPos(-rMax , rMax);
+        //     // Find Max Density empirically to normalize our rejection threshold
+        //     double maxDensity = 0.0;
+        //     for (int i = 0 ; i < 10000; i++) {
+        //         double x = distPos(rng);
+        //         double y = distPos(rng);
+        //         double z = distPos(rng);
+        //         double density = evaluateDensity(x,y,z,n,l,m,Z);
+        //         if (density > maxDensity) maxDensity = density;
+        //     }
+        //     // Von Neumann Rejection Sampling
+        //     // https://en.wikipedia.org/wiki/Rejection_sampling 
+        //     //  1. Sample a point on the x axis from the proposal dist
+        //     //  2. Draw a vertical line at this x position , up to the y-value of the probability density function of the proposal distribution.
+        //     //  3. ample uniformly along this line. 
+        //     //     If the sampled value is greater than the value of the desired distribution at this vertical line, 
+        //     //                  reject the x value and return to step 1.
+        //     //     Else the x value is a sample from the desired distribution.
+        //     // Von Neumann was good for first implementation, but highly inefficient. Replaced with CDF.
+        //     std::uniform_real_distribution<double> distProb(0.0 , maxDensity);
+        //     int attempts = 0;
+        //     while ((int) particles.size() < N) {
+        //         ++attempts;
+        //         double x = distPos(rng);
+        //         double y = distPos(rng);
+        //         double z = distPos(rng);
+        //         double r = std::sqrt(x*x + y*y + z*z);
+        //         if (r > rMax) continue; // Outside bounding sphere
+        //         double density = evaluateDensity(x,y,z,n,l,m,Z);
+        //         double roll = distProb(rng);
+        //         // Accept the particle if random roll falls under the density curve
+        //         if ( roll < density) {
+        //             Particle p;
+        //             p.pos = glm::vec3(x,y,z);
+        //             // Store spherical coords so the current update is exact
+        //             p.r = (float)r;
+        //             p.theta = (float)std::acos(y / r);
+        //             p.phi = (float)std::atan2(z,x);
+        //             // Color 
+        //             float intensity = (float)(density / maxDensity);
+        //             // boost faint regions
+        //             intensity = std::pow(intensity, 0.35f);
+        //             // clamp
+        //             intensity = glm::clamp(intensity, 0.0f, 1.0f);
+        //             p.color = heatmapInferno(intensity);
+        //             // p.color = orbitalPalette(intensity);
+        //             particles.push_back(p);
+        //         }
+        //     }
+        //     float acceptance = 100.f * N / attempts;
+        //     std::cout << "n=" << n << " l=" << l << " m=" << m
+        //             << "  particles=" << N
+        //             << "  acceptance=" << acceptance << "%\n";
+        // }
+        // void generateRandom(int N, float spread)
+        // {
+        //     positions.clear();
+        //     colors.clear();
+        //     srand(42);
+        //     for (int i = 0; i < N; ++i) {
+        //         // Rejection sample: keep only points inside unit sphere
+        //         // so density is uniform (not corner-heavy like a cube sample)
+        //         glm::vec3 p;
+        //         do {
+        //             p = glm::vec3(
+        //                 (rand() / (float)RAND_MAX) * 2.0f - 1.0f,
+        //                 (rand() / (float)RAND_MAX) * 2.0f - 1.0f,
+        //                 (rand() / (float)RAND_MAX) * 2.0f - 1.0f
+        //             );
+        //         } while (glm::length(p) > 1.0f);
+        //         positions.push_back(p * spread);
+        //         // Color: purple at centre → orange at edge (mimics density heatmap)
+        //         float t = glm::length(p);
+        //         colors.push_back({ 0.3f + 0.7f * t, 0.1f + 0.2f * t, 0.9f - 0.6f * t });
+        //     }
+        // }
+        
+
+    // ── Probability current ────────────────────────────────────
     //
     // The quantum probability current for hydrogen eigenstates only has
     // a φ-component (it swirls around the y-axis):
@@ -693,7 +796,7 @@ struct ParticleSystem {
     //   v = J_φ · φ̂  =  (ℏm / r·sinθ) · (-sinφ, 0, cosφ)
     //
     // Rather than applying this as a Cartesian step (which drifts off
-    // the shell over time), we do what the reference code does:
+    // the shell over time), we do:
     //   1. Compute the Cartesian step
     //   2. Extract the new φ from the stepped position
     //   3. Reconstruct position exactly at the original (r, θ, new φ)
@@ -734,6 +837,7 @@ struct OrbitalState {
     bool trigger_resample = true;   // set true when params change → triggers resample
     bool cutaway = false;
     ParticleSystem* ps = nullptr;
+    float dt = 0.016f;
 };
 
 
@@ -818,6 +922,12 @@ static void cb_key(GLFWwindow* win, int key, int, int action, int)
     if (key == GLFW_KEY_S) { orb.N /= 2; changed = true; }
     if (key == GLFW_KEY_W) { orb.N *= 2; changed = true; }
 
+
+    // Change time flow
+    if (key == GLFW_KEY_E) { orb.dt *= 4; changed = true; }
+    if (key == GLFW_KEY_Q) { orb.dt /= 4; changed = true; }
+
+
     if (changed) {
         // clamp it
         clampQuantumNumbers(orb);
@@ -855,8 +965,7 @@ int main() {
 
  
     glm::vec3 lightPos(50.f, 50.f, 50.f);
-    const float dt = 0.016f;
-    particles.sampleWaveFunction(4, 1, 0, 40000 , 1.0);
+    particles.sampleWaveFunctionCDF(4, 1, 0, 40000 , 1.0);
 
     
     while (!glfwWindowShouldClose(engine.window))
@@ -865,7 +974,7 @@ int main() {
 
         // ── Resample only when parameters changed ──────────────
         if (orb.trigger_resample) {
-            particles.sampleWaveFunction(orb.n, orb.l, orb.m, orb.N);
+            particles.sampleWaveFunctionCDF(orb.n, orb.l, orb.m, orb.N);
             orb.trigger_resample = false;
 
             // Zoom camera to fit the orbital
@@ -873,7 +982,7 @@ int main() {
             camera.radius = rMax * 2.6f;
         }
 
-        particles.updateProbabilityCurrent(orb.m, dt);
+        particles.updateProbabilityCurrent(orb.m, orb.dt);
 
         engine.beginFrame();
  
