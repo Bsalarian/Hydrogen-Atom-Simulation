@@ -1,7 +1,0 @@
-Create a TXT record in your DNS configuration for the following hostname:
-_github-pages-challenge-Bsalarian
-.atomiccanvas.com
-
-_github-pages-challenge-Bsalarian
-
-1f49f5659edda8d3bd3391b356b125
