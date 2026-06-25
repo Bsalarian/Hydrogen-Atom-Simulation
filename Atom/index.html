@@ -8,7 +8,6 @@
         body { margin: 0; overflow: hidden; background-color: #0f171e; color: #fff; font-family: 'Segoe UI', sans-serif; touch-action: none; }
         canvas.emscripten { border: 0; background-color: #000; width: 100vw; height: 100vh; display: block; }
         
-        /* Intro Overlay */
         #intro-overlay {
             position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(10, 15, 20, 0.95); z-index: 100;
             display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 20px;
@@ -16,66 +15,75 @@
         }
         .hidden { opacity: 0; pointer-events: none; }
         #intro-overlay h1 { color: #45b6fe; margin-bottom: 10px; }
-        .btn-start { background: #45b6fe; border: none; padding: 10px 25px; font-weight: bold; border-radius: 4px; cursor: pointer; }
+        .intro-desc { max-width: 600px; color: #bbb; line-height: 1.5; margin-bottom: 25px; }
+        .intro-desc strong { color: #fff; }
+        .btn-start { background: #45b6fe; color: #000; border: none; padding: 12px 30px; font-size: 1rem; font-weight: bold; border-radius: 4px; cursor: pointer; transition: background 0.2s; }
+        .btn-start:hover { background: #6bc4ff; }
 
-        /* Ultra-Compact UI Panel */
         #ui-panel {
             position: absolute; top: 10px; left: 10px; background: rgba(15, 23, 30, 0.7);
             padding: 10px; border-radius: 6px; backdrop-filter: blur(8px);
-            border: 1px solid rgba(255,255,255,0.1); width: 200px; z-index: 10;
+            border: 1px solid rgba(255,255,255,0.1); width: 240px; z-index: 10;
         }
         
         .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
         #ui-panel h2 { margin: 0; font-size: 0.85rem; color: #45b6fe; text-transform: uppercase; }
         
-        /* Music Button */
         #btn-music { background: none; border: 1px solid #45b6fe; color: #45b6fe; border-radius: 50%; width: 24px; height: 24px; font-size: 0.6rem; cursor: pointer; display: flex; align-items: center; justify-content: center;}
         
-        .control-group { margin-bottom: 6px; }
-        label { display: flex; justify-content: space-between; font-size: 0.7rem; margin-bottom: 2px; color: #ccc;}
+        .control-group { margin-bottom: 8px; }
+        label { display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; margin-bottom: 4px; color: #ccc;}
         input[type=range] { width: 100%; height: 4px; margin: 0; cursor: pointer; accent-color: #45b6fe; }
+        input[type=checkbox] { accent-color: #45b6fe; }
         
-        #info-toggle { background: none; border: 1px solid #45b6fe; color: #45b6fe; padding: 4px; border-radius: 4px; width: 100%; margin-top: 6px; font-size: 0.7rem; cursor: pointer; }
-        #info-content { display: none; margin-top: 8px; font-size: 0.65rem; color: #aaa; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 8px; }
+        #info-toggle { background: none; border: 1px solid #45b6fe; color: #45b6fe; padding: 6px; border-radius: 4px; width: 100%; margin-top: 10px; font-size: 0.75rem; font-weight: bold; cursor: pointer; }
+        #info-content { display: none; margin-top: 10px; font-size: 0.7rem; color: #aaa; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px; line-height: 1.4; }
+        #info-content strong { color: #ddd; }
 
-        /* Mobile Adjustments */
-        @media (max-width: 600px) {
-            #ui-panel { width: 180px; padding: 8px; }
-        }
+        @media (max-width: 600px) { #ui-panel { width: 200px; padding: 8px; } }
     </style>
 </head>
 <body>
-
     <audio id="bg-music" loop src="ambient.mp3"></audio>
 
     <div id="intro-overlay">
         <h1>Hydrogen Atom Visualizer</h1>
-        <p style="max-width: 500px; color: #bbb;">Real-time, mathematically accurate simulation of a hydrogen atom's electron orbitals using the Schrödinger Wave Equation.</p>
+        <div class="intro-desc">
+            <p>How does an atom really look?</p>
+            <p>For a long time, we pictured the electron orbiting the nucleus like a planet circling the sun.</p>
+            <p>But that model was rejected, when we discovered that the world sometimes works in yet stranger ways.</p>
+            <p>You are looking at a <strong>Quantum Probability Cloud</strong>. According to the Schrödinger Equation, electrons do not orbit the nucleus in flat circles like planets. Instead, they exist as a "cloud" of probability.</p>
+            <p>Every pearl you see represents a possible location where the electron is likely to be found. The swirling motion represents the <strong>Probability Current</strong>: a physical flow of the wave function dictated by the magnetic quantum number.</p>
+        </div>
         <button class="btn-start" id="btn-start">Initialize Simulation</button>
     </div>
 
     <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()"></canvas>
 
     <div id="ui-panel">
-        <div class="header-row">
-            <h2>Parameters</h2>
-            <button id="btn-music">🎵</button>
-        </div>
+        <div class="header-row"><h2>Parameters</h2><button id="btn-music">🎵</button></div>
         
-        <div class="control-group"><label><span>n (Energy)</span><span id="n-val">4</span></label><input type="range" id="slider-n" min="1" max="7" value="4"></div>
-        <div class="control-group"><label><span>l (Shape)</span><span id="l-val">1</span></label><input type="range" id="slider-l" min="0" max="6" value="1"></div>
-        <div class="control-group"><label><span>m (Spin)</span><span id="m-val">0</span></label><input type="range" id="slider-m" min="-6" max="6" value="0"></div>
+        <div class="control-group"><label><span>n (Energy Level)</span><span id="n-val">4</span></label><input type="range" id="slider-n" min="1" max="7" value="4"></div>
+        <div class="control-group"><label><span>l (Orbital Shape)</span><span id="l-val">1</span></label><input type="range" id="slider-l" min="0" max="6" value="1"></div>
+        <div class="control-group"><label><span>m (Magnetic Spin)</span><span id="m-val">0</span></label><input type="range" id="slider-m" min="-6" max="6" value="1"></div>
         
         <hr style="border-top: 1px solid rgba(255,255,255,0.1); margin: 8px 0;">
         
-        <div class="control-group"><label><span>Density (N)</span><span id="count-val">40k</span></label><input type="range" id="slider-count" min="5000" max="100000" step="5000" value="40000"></div>
-        <div class="control-group"><label><span>Speed (dt)</span><span id="speed-val">1.0x</span></label><input type="range" id="slider-speed" min="0" max="0.1" step="0.001" value="0.016"></div>
+        <div class="control-group">
+            <label><span>Cross-Section</span><input type="checkbox" id="check-cutaway"></label>
+        </div>
 
-        <button id="info-toggle">Info</button>
+        <hr style="border-top: 1px solid rgba(255,255,255,0.1); margin: 8px 0;">
+
+        <div class="control-group"><label><span>Density (Particles)</span><span id="count-val">40k</span></label><input type="range" id="slider-count" min="5000" max="100000" step="5000" value="40000"></div>
+        <div class="control-group"><label><span>Time Step (dt)</span><span id="speed-val">1.0x</span></label><input type="range" id="slider-speed" min="0" max="0.1" step="0.001" value="0.016"></div>
+
+        <button id="info-toggle">What am I looking at?</button>
         <div id="info-content">
-            <strong>n:</strong> Distance & energy.<br>
-            <strong>l:</strong> Orbital shape (must be < n).<br>
-            <strong>m:</strong> 3D orientation (-l to +l).<br>
+            <strong>n (Principal):</strong> Determines the distance from the nucleus and the energy level (Shells).<br><br>
+            <strong>l (Azimuthal):</strong> Determines the shape of the orbital (s=sphere, p=dumbbell, d=clover). Can not be larger than n - 1.<br><br>
+            <strong>m (Magnetic):</strong> Determines the orientation of the region of space occupied by an electron  with respect to an applied magnetic field. Can not be larger than l.<br><br>
+            Each wave function with an allowed combination of n,l and m values describes an <strong>atomic orbital</strong>, a particular spatial distribution for an electron.
         </div>
     </div>
 
@@ -88,9 +96,9 @@
                 const setM = Module.cwrap('setM', 'null', ['number']);
                 const setParticleCount = Module.cwrap('setParticleCount', 'null', ['number']);
                 const setSpeed = Module.cwrap('setSpeed', 'null', ['number']);
-                const zoomCamera = Module.cwrap('zoomCamera', 'null', ['number']); // New Camera Hook
+                const zoomCamera = Module.cwrap('zoomCamera', 'null', ['number']); 
+                const setCutaway = Module.cwrap('setCutaway', 'null', ['number']);
 
-                // --- UI Wiring ---
                 const sliderN = document.getElementById('slider-n');
                 const sliderL = document.getElementById('slider-l');
                 const sliderM = document.getElementById('slider-m');
@@ -115,39 +123,40 @@
                 document.getElementById('slider-count').addEventListener('change', (e) => { let val = parseInt(e.target.value); document.getElementById('count-val').innerText = (val/1000)+'k'; setParticleCount(val); });
                 document.getElementById('slider-speed').addEventListener('input', (e) => { let val = parseFloat(e.target.value); document.getElementById('speed-val').innerText = (val/0.016).toFixed(1)+'x'; setSpeed(val); });
 
-                // --- Mobile Pinch-to-Zoom Logic ---
+                document.getElementById('check-cutaway').addEventListener('change', (e) => { setCutaway(e.target.checked ? 1 : 0); });
+
                 let initialPinchDistance = null;
                 Module.canvas.addEventListener('touchstart', (e) => {
-                    if (e.touches.length === 2) {
-                        initialPinchDistance = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-                    }
+                    if (e.touches.length === 2) initialPinchDistance = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
                 }, {passive: false});
                 
                 Module.canvas.addEventListener('touchmove', (e) => {
                     if (e.touches.length === 2 && initialPinchDistance !== null) {
-                        e.preventDefault(); // Stop page scrolling
+                        e.preventDefault(); 
                         let currentDistance = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-                        let diff = initialPinchDistance - currentDistance; // positive means pinching in (zoom out)
-                        
-                        // Only trigger if movement is significant to prevent jitter
-                        if (Math.abs(diff) > 5) {
-                            zoomCamera(diff > 0 ? -1.0 : 1.0);
-                            initialPinchDistance = currentDistance; // Reset baseline
-                        }
+                        let diff = initialPinchDistance - currentDistance; 
+                        if (Math.abs(diff) > 5) { zoomCamera(diff > 0 ? -1.0 : 1.0); initialPinchDistance = currentDistance; }
                     }
                 }, {passive: false});
-                
                 Module.canvas.addEventListener('touchend', () => { initialPinchDistance = null; });
             }
         };
 
-        // --- Standard UI Toggles ---
         document.getElementById('info-toggle').addEventListener('click', () => {
             const el = document.getElementById('info-content'); el.style.display = el.style.display === 'block' ? 'none' : 'block';
         });
-        document.getElementById('btn-start').addEventListener('click', () => { document.getElementById('intro-overlay').classList.add('hidden'); });
-        
-        // --- Music Logic ---
+        document.getElementById('btn-start').addEventListener('click', () => {
+                // 1. Hide the intro overlay
+                document.getElementById('intro-overlay').classList.add('hidden');
+                
+                // 2. Handle the audio
+                const bgMusic = document.getElementById('bg-music');
+                bgMusic.volume = 0.5;
+                bgMusic.play().catch(err => console.log("Autoplay blocked by browser policy"));
+                
+                // 3. Update the music button icon to show it's playing
+                document.getElementById('btn-music').innerText = '⏸';
+            });
         const bgMusic = document.getElementById('bg-music');
         document.getElementById('btn-music').addEventListener('click', (e) => {
             if (bgMusic.paused) { bgMusic.play(); e.target.innerText = '⏸'; } 

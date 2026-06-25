@@ -244,7 +244,7 @@ static Mesh buildSphereMesh(float radius, int stacks, int sectors){
 }
 
 struct Camera {
-    float radius = 10.0f, azimuth = 0.0f, elevation = (float)M_PI / 4.0f;
+    float radius = 10.0f, azimuth = 0.0f, elevation = (float)M_PI / 2.0f;
     float orbitSpeed = 0.005f; bool dragging = false; double lastX = 0, lastY = 0;
     glm::vec3 position() const {
         float e = glm::clamp(elevation, 0.01f, (float)M_PI - 0.01f);
@@ -280,10 +280,8 @@ struct Particle {     glm::vec3 pos;
 struct Engine {
     GLFWwindow* window = nullptr;
     Mesh sphere;
-    
-    GLuint shaderSphere, shaderPoint;
+    GLuint shaderSphere;
     GLuint instanceVBO_pos = 0, instanceVBO_col = 0;
-    GLuint pointVAO = 0; // VAO specifically for drawing points
  
     Engine(int w, int h, const char* title) {
         glfwInit();
@@ -293,30 +291,22 @@ struct Engine {
         glfwMakeContextCurrent(window); glfwSwapInterval(1);
  
         glClearColor(0.06f, 0.09f, 0.12f, 1.0f);
+        
+        // Pearls require depth testing but NO blending
+        glEnable(GL_DEPTH_TEST);
+        glDisable(GL_BLEND);
 
         shaderSphere = buildProgram(VERT_SPHERE, FRAG_SPHERE);
-        shaderPoint  = buildProgram(VERT_POINT, FRAG_POINT);
- 
-        sphere = buildSphereMesh(1.0f, 12, 12); // Lower poly for instancing
+        sphere = buildSphereMesh(1.0f, 12, 12); 
         
-        // Setup Instanced Buffers
         glGenBuffers(1, &instanceVBO_pos);
         glGenBuffers(1, &instanceVBO_col);
 
-        // Bind to Sphere VAO
         glBindVertexArray(sphere.vao);
         glBindBuffer(GL_ARRAY_BUFFER, instanceVBO_pos);
         glEnableVertexAttribArray(2); glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 0, (void*)0); glVertexAttribDivisor(2, 1);
         glBindBuffer(GL_ARRAY_BUFFER, instanceVBO_col);
         glEnableVertexAttribArray(3); glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 0, (void*)0); glVertexAttribDivisor(3, 1);
-        
-        // Bind to Point VAO
-        glGenVertexArrays(1, &pointVAO);
-        glBindVertexArray(pointVAO);
-        glBindBuffer(GL_ARRAY_BUFFER, instanceVBO_pos);
-        glEnableVertexAttribArray(2); glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
-        glBindBuffer(GL_ARRAY_BUFFER, instanceVBO_col);
-        glEnableVertexAttribArray(3); glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
         glBindVertexArray(0);
     }
  
@@ -324,8 +314,41 @@ struct Engine {
         int w, h; glfwGetFramebufferSize(window, &w, &h);
         return glm::perspective(glm::radians(fovDeg), (float)w / (h ? h : 1), nearZ, farZ);
     }
-};
 
+    void drawParticlesInstanced(const std::vector<Particle>& particles, float scale) {
+        static std::vector<glm::vec3> positions;
+        static std::vector<glm::vec3> colors;
+        if (positions.size() != particles.size()) {
+            positions.resize(particles.size()); colors.resize(particles.size());
+        }
+        for (size_t i = 0; i < particles.size(); ++i) {
+            positions[i] = particles[i].pos; colors[i] = particles[i].color;
+        }
+
+        glBindBuffer(GL_ARRAY_BUFFER, instanceVBO_pos);
+        glBufferData(GL_ARRAY_BUFFER, positions.size() * sizeof(glm::vec3), positions.data(), GL_DYNAMIC_DRAW);
+        glBindBuffer(GL_ARRAY_BUFFER, instanceVBO_col);
+        glBufferData(GL_ARRAY_BUFFER, colors.size() * sizeof(glm::vec3), colors.data(), GL_DYNAMIC_DRAW);
+
+        glUniform1f(glGetUniformLocation(shaderSphere, "uScale"), scale);
+        
+        glBindVertexArray(sphere.vao);
+        glDrawElementsInstanced(GL_TRIANGLES, sphere.indexCount, GL_UNSIGNED_INT, nullptr, particles.size());
+        glBindVertexArray(0);
+    }
+
+    void drawProton(glm::vec3 pos, glm::vec3 color, float scale) {
+        glBindBuffer(GL_ARRAY_BUFFER, instanceVBO_pos);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3), &pos, GL_DYNAMIC_DRAW);
+        glBindBuffer(GL_ARRAY_BUFFER, instanceVBO_col);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3), &color, GL_DYNAMIC_DRAW);
+
+        glUniform1f(glGetUniformLocation(shaderSphere, "uScale"), scale);
+        glBindVertexArray(sphere.vao);
+        glDrawElementsInstanced(GL_TRIANGLES, sphere.indexCount, GL_UNSIGNED_INT, nullptr, 1);
+        glBindVertexArray(0);
+    }
+};
 glm::vec3 heatmapInferno(float t) {
     t = glm::clamp(t, 0.0f, 1.0f); struct Stop { float p; glm::vec3 c; };
     static const Stop stops[] = {
@@ -430,7 +453,6 @@ Update: Von Neumann is very inefficent as we throw most points away. We swtiched
 
 struct ParticleSystem {
     std::vector<Particle> particles ;
-    std::vector<glm::vec3> cachedPos; std::vector<glm::vec3> cachedCol;
     std::mt19937 rng{42};
 
 
@@ -696,28 +718,15 @@ struct ParticleSystem {
     // This keeps every particle locked to its sampled shell forever.
     // The only thing that changes is φ — the particle orbits the y-axis.
     //
-    void updateProbabilityCurrent(int m_quantum, float dt, GLuint vboPos, GLuint vboCol) {
-        cachedPos.resize(particles.size());
-        cachedCol.resize(particles.size());
-        
-        for (size_t i = 0; i < particles.size(); ++i) {
-            Particle& p = particles[i];
-            if (m_quantum != 0) {
+    void updateProbabilityCurrent(int m_quantum, float dt) {
+            if (m_quantum == 0) return;  
+            for (Particle& p : particles) {
                 float sinTheta = std::max(std::sin(p.theta), 1e-4f);
                 p.phi += ((float)m_quantum / (p.r * sinTheta)) * dt;
                 p.pos = glm::vec3(p.r * std::sin(p.theta) * std::cos(p.phi), p.r * std::cos(p.theta), p.r * std::sin(p.theta) * std::sin(p.phi));
             }
-            cachedPos[i] = p.pos;
-            cachedCol[i] = p.color;
         }
-
-        // Push flat arrays to GPU instantly
-        glBindBuffer(GL_ARRAY_BUFFER, vboPos);
-        glBufferData(GL_ARRAY_BUFFER, cachedPos.size() * sizeof(glm::vec3), cachedPos.data(), GL_DYNAMIC_DRAW);
-        glBindBuffer(GL_ARRAY_BUFFER, vboCol);
-        glBufferData(GL_ARRAY_BUFFER, cachedCol.size() * sizeof(glm::vec3), cachedCol.data(), GL_DYNAMIC_DRAW);
-    }
-};
+    };
 
 
 // =====================================================
@@ -727,11 +736,9 @@ struct ParticleSystem {
 struct OrbitalState {
     int  n = 4, l = 1, m = 0;
 int  N = 40000;
-    bool isPointMode = false; // Toggle
-    bool isCutaway = false;   // Toggle
     bool trigger_resample = true;   
     ParticleSystem* ps = nullptr;
-    float dt = 0.16f;
+    float dt = 0.025f;
 };
 
 
@@ -870,15 +877,11 @@ extern "C" {
     EMSCRIPTEN_KEEPALIVE void setSpeed(float dt) {
         gApp.orb->dt = dt;
     }
-    EMSCRIPTEN_KEEPALIVE void setRenderMode(int mode) { gApp.orb->isPointMode = (mode == 1); }
-    EMSCRIPTEN_KEEPALIVE void setCutaway(int cutaway) { gApp.orb->isCutaway = (cutaway == 1); }
-
     EMSCRIPTEN_KEEPALIVE int getN() { return gApp.orb->n; }
     EMSCRIPTEN_KEEPALIVE int getL() { return gApp.orb->l; }
     EMSCRIPTEN_KEEPALIVE int getM() { return gApp.orb->m; }
 }
 #endif
-
 
 static void mainLoopIteration() {
     glfwPollEvents();
@@ -889,52 +892,28 @@ static void mainLoopIteration() {
         gApp.camera->radius = (float)((gApp.orb->n * gApp.orb->n + 3.0 * gApp.orb->n)) * 2.6f;
     }
 
-    // Step 1: Update Math & Push Array to GPU Buffers
-    gApp.particles->updateProbabilityCurrent(gApp.orb->m, gApp.orb->dt, gApp.engine->instanceVBO_pos, gApp.engine->instanceVBO_col);
+    gApp.particles->updateProbabilityCurrent(gApp.orb->m, gApp.orb->dt);
 
-    // Step 2: Set OpenGL Global State based on Render Mode
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    
-    if (gApp.orb->isPointMode) {
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE); // Additive blending for mist
-        glDepthMask(GL_FALSE);             // Don't write depth, prevents clipping
-    } else {
-        glEnable(GL_DEPTH_TEST);
-        glDisable(GL_BLEND);               // Opaque for spheres
-        glDepthMask(GL_TRUE);
-    }
-
-    // Step 3: Bind Correct Shader and Uniforms
-    GLuint activeShader = gApp.orb->isPointMode ? gApp.engine->shaderPoint : gApp.engine->shaderSphere;
-    glUseProgram(activeShader);
+    glUseProgram(gApp.engine->shaderSphere);
 
     glm::mat4 view = gApp.camera->viewMatrix();
     glm::mat4 projection = gApp.engine->projectionMatrix();
 
-    glUniformMatrix4fv(glGetUniformLocation(activeShader, "view"), 1, GL_FALSE, glm::value_ptr(view));
-    glUniformMatrix4fv(glGetUniformLocation(activeShader, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
-    glUniform1i(glGetUniformLocation(activeShader, "uCutaway"), gApp.orb->isCutaway ? 1 : 0);
-    
-    if (!gApp.orb->isPointMode) {
-        glUniform3fv(glGetUniformLocation(activeShader, "lightPos"), 1, glm::value_ptr(gApp.lightPos));
-        glUniform3fv(glGetUniformLocation(activeShader, "viewPos"), 1, glm::value_ptr(gApp.camera->position()));
-    }
+    glUniformMatrix4fv(glGetUniformLocation(gApp.engine->shaderSphere, "view"), 1, GL_FALSE, glm::value_ptr(view));
+    glUniformMatrix4fv(glGetUniformLocation(gApp.engine->shaderSphere, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+    glUniform3fv(glGetUniformLocation(gApp.engine->shaderSphere, "lightPos"), 1, glm::value_ptr(gApp.lightPos));
+    glUniform3fv(glGetUniformLocation(gApp.engine->shaderSphere, "viewPos"), 1, glm::value_ptr(gApp.camera->position()));
 
-    // Step 4: Draw all particles instantly!
-    if (gApp.orb->isPointMode) {
-        glUniform1f(glGetUniformLocation(activeShader, "uScale"), 200.0f);
-        glBindVertexArray(gApp.engine->pointVAO);
-        glDrawArrays(GL_POINTS, 0, gApp.particles->particles.size());
-    } else {
-        glUniform1f(glGetUniformLocation(activeShader, "uScale"), 0.35f);
-        glBindVertexArray(gApp.engine->sphere.vao);
-        glDrawElementsInstanced(GL_TRIANGLES, gApp.engine->sphere.indexCount, GL_UNSIGNED_INT, nullptr, gApp.particles->particles.size());
-    }
+    float pulse = 0.45f + 0.1f * sin((float)glfwGetTime() * 2.0f);
+    float protonScale = 0.1f + pulse * 0.15f;
+    
+    // gApp.engine->drawProton(glm::vec3(0), glm::vec3(1.0f,0.25f,0.15f), protonScale * 1.4f);
+
+    gApp.engine->drawParticlesInstanced(gApp.particles->particles, 0.15f);
 
     glfwSwapBuffers(gApp.engine->window);
 }
-
 
 int main() {
 
