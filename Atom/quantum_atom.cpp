@@ -97,10 +97,7 @@ void main()
 {
     vec4 world = model * vec4(aPos, 1.0);
     fragPos    = vec3(world);
- 
-    // Normal matrix: inverse-transpose of the upper-left 3×3.
-    // For a uniform scale this equals the model matrix,
-    // but we do it properly so the code survives non-uniform scales.
+
     mat3 normalMatrix = transpose(inverse(mat3(model)));
     fragNormal = normalize(normalMatrix * aNormal);
  
@@ -375,7 +372,7 @@ struct Engine {
         glEnable(GL_DEPTH_TEST);
 
         glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glClearColor(0.06f, 0.09f, 0.12f, 1.0f);
 
         shader       = buildShaderProgram();
