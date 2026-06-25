@@ -338,8 +338,14 @@ struct Camera {
  
     void onScroll(double /*dx*/, double dy)
     {
-        radius -= (float)dy * zoomSpeed;
+        // Clamp the scroll value so high-precision trackpads don't send you to the shadow realm
+        float scrollDir = (dy > 0.0) ? 1.0f : ((dy < 0.0) ? -1.0f : 0.0f);
+        
+        // Move by exactly 10% of the current distance per "tick"
+        radius -= scrollDir * radius * 0.1f;
+        
         if (radius < 0.5f) radius = 0.5f;
+        if (radius > 300.0f) radius = 300.0f;
     }
 };
 
@@ -1046,6 +1052,12 @@ extern "C" {
     EMSCRIPTEN_KEEPALIVE void setParticleCount(int N) {
         gApp.orb->N = N;
         gApp.orb->trigger_resample = true;
+    }
+    EMSCRIPTEN_KEEPALIVE void setSpeed(float dt) {
+        gApp.orb->dt = dt;
+    }
+    EMSCRIPTEN_KEEPALIVE void zoomCamera(float delta) {
+        gApp.camera->onScroll(0, delta);
     }
     EMSCRIPTEN_KEEPALIVE int getN() { return gApp.orb->n; }
     EMSCRIPTEN_KEEPALIVE int getL() { return gApp.orb->l; }
