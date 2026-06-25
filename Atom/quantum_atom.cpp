@@ -52,9 +52,14 @@ Renderer
 
 gl_Position=projection⋅view⋅model⋅vec4(aPos,1.0)
 */
-
-#include <GL/glew.h>
+#define GL_GLEXT_PROTOTYPES 1
+#define GLFW_INCLUDE_ES3 
 #include <GLFW/glfw3.h>
+
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 #include <sstream>
 
 #include <glm/glm.hpp>
@@ -80,8 +85,8 @@ static const int SCR_H = 1200;
 // =====================================================
 // SHADERS
 // =====================================================
-static const char* VERT_SRC = R"glsl(
-#version 330 core
+static const char* VERT_SRC = R"glsl(#version 300 es
+precision highp float;
  
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
@@ -104,8 +109,9 @@ void main()
     gl_Position = projection * view * world;
 }
 )glsl";
- static const char* FRAG_SRC = R"glsl(
-#version 330 core
+
+static const char* FRAG_SRC = R"glsl(#version 300 es
+precision highp float;
 
 in vec3 fragPos;
 in vec3 fragNormal;
@@ -366,8 +372,6 @@ struct Engine {
         glfwMakeContextCurrent(window);
         glfwSwapInterval(1);
  
-        glewExperimental = GL_TRUE;
-        if (glewInit() != GLEW_OK) { std::cerr << "glewInit failed\n"; std::exit(-1); }
  
         glEnable(GL_DEPTH_TEST);
 
@@ -493,6 +497,76 @@ struct Particle {
     float phi;      // Azimuthal angle in xz-plane
 };
 
+/* 
+Defining the Associated Laguerre polynomial
+Uses the standard 3-term recurrence:
+
+    L_0 = 1
+    L_1 = 1 + alpha - x
+    L_k = ((2k-1+alpha-x)*L_{k-1} - (k-1+alpha)*L_{k-2}) / k
+
+*/
+static double assocLaguerre(int n, double alpha, double x) {
+
+    if (n == 0) return 1.0;
+    if (n == 1) return 1.0 + alpha - x;
+    double L0 = 1.0, L1 = 1.0 + alpha - x, Lk = 0.0;
+    for (int k = 2; k <= n; ++k) {
+        Lk = ((2*k - 1 + alpha - x) * L1 - (k - 1 + alpha) * L0) / k;
+        L0 = L1;
+        L1 = Lk;
+    }
+    return Lk;
+
+
+}
+
+/*
+Defining the Associated Legendre polynomial P_l^m(cos θ) 
+*/
+
+static double sphLegendre(int l, int m, double theta) {
+    double cosT = std::cos(theta);
+    double sinT = std::sin(theta);
+
+
+    double Pmm = 1.0;
+    double factor = 1.0;
+    for (int i = 1; i <= m; ++i) {
+        Pmm  *= -factor * sinT; 
+        factor += 2.0;
+    }
+
+    if (l == m) {
+        double norm = std::sqrt((2.0*l + 1.0) / (4.0 * M_PI));
+        for (int i = 1; i <= m; ++i)
+            norm *= std::sqrt(1.0 / (2.0 * i)); 
+        return norm * Pmm;
+    }
+
+    double Pmp1m = cosT * (2.0*m + 1.0) * Pmm;
+
+    if (l == m + 1) {
+        double norm = std::sqrt((2.0*l + 1.0) / (4.0 * M_PI));
+        for (int i = 1; i <= m; ++i)
+            norm *= std::sqrt(1.0 / (2.0 * i));
+        return norm * Pmp1m;
+    }
+
+    double Plm = 0.0;
+    for (int ll = m + 2; ll <= l; ++ll) {
+        Plm = ((2.0*ll - 1.0) * cosT * Pmp1m - (ll + m - 1.0) * Pmm) / (ll - m);
+        Pmm   = Pmp1m;
+        Pmp1m = Plm;
+    }
+    double norm = std::sqrt((2.0*l + 1.0) / (4.0 * M_PI));
+    for (int i = 1; i <= m; ++i)
+        norm *= std::sqrt(1.0 / (2.0 * i));
+    return norm * Plm;
+
+}
+
+
 
 /*
 
@@ -556,13 +630,13 @@ struct ParticleSystem {
         double rho = (2.0 * r) /n; // for a0=1.0 aka hydrogen
         // https://en.wikipedia.org/wiki/Gamma_function Gamma (x+1 interpolates the factorial function to non-integer values.
         double constant = std::sqrt( std::pow(2.0 / n , 3) * (std::tgamma(n - l) / ( 2.0 * n * std::tgamma(n+l)))); 
-        double radial = constant * std::exp(-rho / 2.0) * std::pow(rho ,l) * std::assoc_laguerre(n-l-1 , 2.0 * l +1 , rho);
+        double radial = constant * std::exp(-rho / 2.0) * std::pow(rho ,l) * assocLaguerre(n-l-1 , 2.0 * l +1 , rho);
 
 
         // Angular part -- defines the shape of the orbitals.
-        // We use Real Spherical Harmonics and std::sph_legendre to automatically apply the normalization factor $N_{lm}$.
+        // We use Real Spherical Harmonics and sphLegendre to apply the normalization factor $N_{lm}$.
 
-        double angular = std::sph_legendre(l , std::abs(m) , theta);
+        double angular = sphLegendre(l , std::abs(m) , theta);
 
         // Apply real spherical harmonics mapping for horizental rotation
         if (m > 0) {
@@ -604,7 +678,7 @@ struct ParticleSystem {
         double r = i * (rMax / (RESOLUTION - 1));
         if (r < 1e-6) { cdf_r[i] = 0; continue; }
         double rho = (2.0 * r * Z) / n;
-        double R_val = std::exp(-rho / 2.0) * std::pow(rho, l) * std::assoc_laguerre(n - l - 1, 2.0 * l + 1, rho);
+        double R_val = std::exp(-rho / 2.0) * std::pow(rho, l) * assocLaguerre(n - l - 1, 2.0 * l + 1, rho);
 
 
         // PDF = r^2 * |R(r)|^2
@@ -618,7 +692,7 @@ struct ParticleSystem {
     double sum_theta = 0.0;
     for (int i = 0; i < RESOLUTION; ++i) {
         double theta = i * (M_PI / (RESOLUTION - 1));
-        double Y_val = std::sph_legendre(l, std::abs(m), theta);
+        double Y_val = sphLegendre(l, std::abs(m), theta);
         
         // PDF = sin(theta) * |Y(theta)|^2
         sum_theta += std::sin(theta) * (Y_val * Y_val);
@@ -849,6 +923,7 @@ struct WindowState {
 
 
 
+
 // ─────────────────────────────────────────────
 //  GLFW CALLBACKS
 //  We store the Camera pointer in the window's user pointer.
@@ -939,16 +1014,95 @@ static void cb_key(GLFWwindow* win, int key, int, int action, int)
            glfwSetWindowTitle(win, ss.str().c_str());
     }
 }
+struct AppState {
+    Engine*        engine    = nullptr;
+    Camera*        camera    = nullptr;
+    OrbitalState*  orb       = nullptr;
+    ParticleSystem* particles = nullptr;
+    WindowState*   ws        = nullptr;
+    glm::vec3      lightPos  = glm::vec3(50.f, 50.f, 50.f);
+};
+static AppState gApp;
+
+
+
+#ifdef __EMSCRIPTEN__
+extern "C" {
+    EMSCRIPTEN_KEEPALIVE void setN(int n) {
+        gApp.orb->n = n;
+        clampQuantumNumbers(*gApp.orb);
+        gApp.orb->trigger_resample = true;
+    }
+    EMSCRIPTEN_KEEPALIVE void setL(int l) {
+        gApp.orb->l = l;
+        clampQuantumNumbers(*gApp.orb);
+        gApp.orb->trigger_resample = true;
+    }
+    EMSCRIPTEN_KEEPALIVE void setM(int m) {
+        gApp.orb->m = m;
+        clampQuantumNumbers(*gApp.orb);
+        gApp.orb->trigger_resample = true;
+    }
+    EMSCRIPTEN_KEEPALIVE void setParticleCount(int N) {
+        gApp.orb->N = N;
+        gApp.orb->trigger_resample = true;
+    }
+    EMSCRIPTEN_KEEPALIVE int getN() { return gApp.orb->n; }
+    EMSCRIPTEN_KEEPALIVE int getL() { return gApp.orb->l; }
+    EMSCRIPTEN_KEEPALIVE int getM() { return gApp.orb->m; }
+}
+#endif
+
+
+static void mainLoopIteration() {
+    glfwPollEvents();
+
+    if (gApp.orb->trigger_resample) {
+        gApp.particles->sampleWaveFunctionCDF(
+            gApp.orb->n, gApp.orb->l, gApp.orb->m, gApp.orb->N);
+        gApp.orb->trigger_resample = false;
+        float rMax = (float)((gApp.orb->n * gApp.orb->n + 3.0 * gApp.orb->n));
+        gApp.camera->radius = rMax * 2.6f;
+    }
+
+    gApp.particles->updateProbabilityCurrent(gApp.orb->m, gApp.orb->dt);
+
+    gApp.engine->beginFrame();
+
+    glm::mat4 view       = gApp.camera->viewMatrix();
+    glm::mat4 projection = gApp.engine->projectionMatrix();
+
+    glUniformMatrix4fv(gApp.engine->uView,       1, GL_FALSE, glm::value_ptr(view));
+    glUniformMatrix4fv(gApp.engine->uProjection, 1, GL_FALSE, glm::value_ptr(projection));
+    glUniform3fv(gApp.engine->uLightPos, 1, glm::value_ptr(gApp.lightPos));
+    glUniform3fv(gApp.engine->uViewPos,  1, glm::value_ptr(gApp.camera->position()));
+
+    float pulse = 0.45f + 0.45f * sin((float)glfwGetTime() * 2.0f);
+    float protonScale = 0.35f + pulse * 0.15f;
+    gApp.engine->drawSphere(glm::vec3(0), glm::vec3(1.0f,0.2f,0.15f), protonScale);
+    gApp.engine->drawSphere(glm::vec3(0), glm::vec3(1.0f,0.25f,0.15f), protonScale * 1.4f);
+
+    for (Particle& p : gApp.particles->particles)
+        gApp.engine->drawSphere(p.pos, p.color, 0.2f);
+
+    glfwSwapBuffers(gApp.engine->window);
+}
 
 int main() {
 
 
-    Engine engine(SCR_W, SCR_H, "Hydrogen Orbital  |  Arrows=n/l   ,/.=m   -/+=particles");
-    // Orbital
-    OrbitalState orb;   
-    // ── Camera + callbacks ──────────────────────
-    Camera camera;
-    WindowState ws{ &camera, &orb };
+    static Engine        engine(SCR_W, SCR_H, "Hydrogen Orbital");
+    static OrbitalState  orb;
+    static Camera        camera;
+    static WindowState   ws{ &camera, &orb };
+    static ParticleSystem particles;
+
+    gApp.engine    = &engine;
+    gApp.orb       = &orb;
+    gApp.camera    = &camera;
+    gApp.ws        = &ws;
+    gApp.particles = &particles;
+    
     glfwSetWindowUserPointer(engine.window, &ws);
     glfwSetMouseButtonCallback   (engine.window, cb_mouseButton);
     glfwSetCursorPosCallback     (engine.window, cb_mouseMove);
@@ -956,7 +1110,7 @@ int main() {
     glfwSetKeyCallback           (engine.window, cb_key);
     glfwSetFramebufferSizeCallback(engine.window, cb_resize);
     
-    ParticleSystem particles;
+
     orb.ps = &particles;
     // particles.generateRandom(5000, 15.0f);
 
@@ -964,54 +1118,15 @@ int main() {
     glm::vec3 lightPos(50.f, 50.f, 50.f);
     particles.sampleWaveFunctionCDF(4, 1, 0, 40000 , 1.0);
 
-    
+#ifdef __EMSCRIPTEN__
+    // 0 = use requestAnimationFrame rate (60fps)
+    // 1 = simulate infinite loop (main() blocks here on native, not needed for web)
+    emscripten_set_main_loop(mainLoopIteration, 0, 1);
+#else
+    // Native desktop: keep the original while loop
     while (!glfwWindowShouldClose(engine.window))
-    {
-        glfwPollEvents();
+        mainLoopIteration();
+#endif
 
-        // ── Resample only when parameters changed ──────────────
-        if (orb.trigger_resample) {
-            particles.sampleWaveFunctionCDF(orb.n, orb.l, orb.m, orb.N);
-            orb.trigger_resample = false;
-
-            // Zoom camera to fit the orbital
-            float rMax = (float)((orb.n * orb.n + 3.0 * orb.n));
-            camera.radius = rMax * 2.6f;
-        }
-
-        particles.updateProbabilityCurrent(orb.m, orb.dt);
-
-        engine.beginFrame();
- 
-        glm::mat4 view       = camera.viewMatrix();
-        glm::mat4 projection = engine.projectionMatrix();
- 
-        glUniformMatrix4fv(engine.uView,       1, GL_FALSE, glm::value_ptr(view));
-        glUniformMatrix4fv(engine.uProjection, 1, GL_FALSE, glm::value_ptr(projection));
-        glUniform3fv(engine.uLightPos, 1, glm::value_ptr(lightPos));
-        glUniform3fv(engine.uViewPos,  1, glm::value_ptr(camera.position()));
-
-        // Add proton
-        float pulse = 0.45f + 0.45f * sin((float)glfwGetTime() * 2.0f);
-        float protonScale = 0.35f + pulse * 0.15f;
-        
-        engine.drawSphere(
-            glm::vec3(0),
-            glm::vec3(1.0f,0.2f,0.15f),
-            protonScale
-        );
-
-        engine.drawSphere(
-            glm::vec3(0),
-            glm::vec3(1.0f,0.25f,0.15f),
-            protonScale * 1.4f
-        );
-
-        // Add electron probability cloud
-        for (Particle& p : particles.particles)
-            engine.drawSphere(p.pos , p.color , 0.2f);
- 
-        glfwSwapBuffers(engine.window);
-    }
     return 0;
 }

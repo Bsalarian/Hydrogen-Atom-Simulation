@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantum Hydrogen Orbital</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #0f171e; color: #fff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        /* The Emscripten Canvas */
+        canvas.emscripten { border: 0 none; background-color: #000; width: 100vw; height: 100vh; display: block; }
+        
+        /* Floating UI Panel */
+        #ui-panel {
+            position: absolute; top: 20px; left: 20px;
+            background: rgba(15, 23, 30, 0.85);
+            padding: 20px; border-radius: 12px;
+            backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1);
+            width: 320px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        h1 { margin: 0 0 15px 0; font-size: 1.2rem; text-transform: uppercase; letter-spacing: 2px; color: #45b6fe; }
+        
+        /* Sliders */
+        .control-group { margin-bottom: 15px; }
+        label { display: flex; justify-content: space-between; font-size: 0.9rem; margin-bottom: 5px; color: #ccc;}
+        input[type=range] { width: 100%; cursor: pointer; accent-color: #45b6fe; }
+        
+        /* Educational Info */
+        #info-toggle {
+            background: none; border: 1px solid #45b6fe; color: #45b6fe;
+            padding: 8px 12px; border-radius: 6px; cursor: pointer;
+            width: 100%; margin-top: 10px; font-weight: bold; transition: all 0.2s;
+        }
+        #info-toggle:hover { background: #45b6fe; color: #000; }
+        #info-content {
+            display: none; margin-top: 15px; font-size: 0.85rem; line-height: 1.5; color: #aaa;
+            border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+
+    <div id="ui-panel">
+        <h1>Hydrogen Orbital</h1>
+        
+        <div class="control-group">
+            <label><span>Principal (n): Energy Level</span> <span id="n-val">4</span></label>
+            <input type="range" id="slider-n" min="1" max="7" value="4">
+        </div>
+        
+        <div class="control-group">
+            <label><span>Azimuthal (l): Shape</span> <span id="l-val">1</span></label>
+            <input type="range" id="slider-l" min="0" max="6" value="1">
+        </div>
+        
+        <div class="control-group">
+            <label><span>Magnetic (m): Orientation</span> <span id="m-val">0</span></label>
+            <input type="range" id="slider-m" min="-6" max="6" value="0">
+        </div>
+
+        <button id="info-toggle">Toggle Quantum Info</button>
+        <div id="info-content">
+            <strong>n (Principal):</strong> Determines the distance from the nucleus and the energy level.<br><br>
+            <strong>l (Azimuthal):</strong> Determines the shape of the orbital (s=sphere, p=dumbbell, d=clover). Must be less than n.<br><br>
+            <strong>m (Magnetic):</strong> Determines the 3D orientation of the shape. Ranges from -l to +l.
+        </div>
+    </div>
+
+    <script async type="text/javascript" src="index.js"></script>
+
+    <script>
+        // Emscripten Configuration Hook
+        var Module = {
+            canvas: (function() { return document.getElementById('canvas'); })(),
+            onRuntimeInitialized: function() {
+                // Bridge C++ functions to JS using cwrap
+                const setN = Module.cwrap('setN', 'null', ['number']);
+                const setL = Module.cwrap('setL', 'null', ['number']);
+                const setM = Module.cwrap('setM', 'null', ['number']);
+
+                // Hook up the sliders
+                const sliderN = document.getElementById('slider-n');
+                const sliderL = document.getElementById('slider-l');
+                const sliderM = document.getElementById('slider-m');
+
+                sliderN.addEventListener('input', (e) => {
+                    let val = parseInt(e.target.value);
+                    document.getElementById('n-val').innerText = val;
+                    
+                    // Enforce physics rule: l < n
+                    if (parseInt(sliderL.value) >= val) {
+                        sliderL.value = val - 1;
+                        document.getElementById('l-val').innerText = sliderL.value;
+                        setL(parseInt(sliderL.value));
+                    }
+                    sliderL.max = val - 1; // Update UI constraint
+                    setN(val);
+                });
+
+                sliderL.addEventListener('input', (e) => {
+                    let val = parseInt(e.target.value);
+                    document.getElementById('l-val').innerText = val;
+                    
+                    // Enforce physics rule: -l <= m <= l
+                    sliderM.min = -val;
+                    sliderM.max = val;
+                    if (parseInt(sliderM.value) > val) sliderM.value = val;
+                    if (parseInt(sliderM.value) < -val) sliderM.value = -val;
+                    document.getElementById('m-val').innerText = sliderM.value;
+                    
+                    setM(parseInt(sliderM.value));
+                    setL(val);
+                });
+
+                sliderM.addEventListener('input', (e) => {
+                    let val = parseInt(e.target.value);
+                    document.getElementById('m-val').innerText = val;
+                    setM(val);
+                });
+            }
+        };
+
+        // UI Toggle Logic
+        document.getElementById('info-toggle').addEventListener('click', () => {
+            const content = document.getElementById('info-content');
+            content.style.display = content.style.display === 'block' ? 'none' : 'block';
+        });
+    </script>
+</body>
+</html>
