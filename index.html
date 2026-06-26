@@ -122,16 +122,29 @@
  if (typeof resizeViewport !== 'function') {
         console.warn('resizeViewport not exported — rebuild with full EXPORTED_FUNCTIONS');
     } else {
-        function adaptCanvasResolution() {
-            const dpr = window.devicePixelRatio || 1;
-            Module.canvas.width = window.innerWidth * dpr;
-            Module.canvas.height = window.innerHeight * dpr;
-            resizeViewport(Module.canvas.width, Module.canvas.height);
+    function adaptCanvasResolution() {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2); // cap at 2x
+        const w = window.innerWidth * dpr;
+        const h = window.innerHeight * dpr;
+
+        const gl = Module.canvas.getContext('webgl2');
+        if (gl) {
+            const maxSize = gl.getParameter(gl.MAX_RENDERBUFFER_SIZE);
+            const safeW = Math.min(w, maxSize);
+            const safeH = Math.min(h, maxSize);
+            Module.canvas.width = safeW;
+            Module.canvas.height = safeH;
+            resizeViewport(safeW, safeH);
+        } else {
+            Module.canvas.width = w;
+            Module.canvas.height = h;
+            resizeViewport(w, h);
         }
+}
         window.addEventListener('resize', adaptCanvasResolution);
         adaptCanvasResolution();
     }
-    
+
     const sliderN = document.getElementById('slider-n');
     const sliderL = document.getElementById('slider-l');
     const sliderM = document.getElementById('slider-m');
