@@ -964,7 +964,7 @@ int main() {
 
  
     glm::vec3 lightPos(50.f, 50.f, 50.f);
-    particles.sampleWaveFunctionCDF(4, 1, 0, 40000 , 1.0);
+    particles.sampleWaveFunctionCDF(4, 2, 1, 40000 , 1.0);
 
 #ifdef __EMSCRIPTEN__
     // 0 = use requestAnimationFrame rate (60fps)
