@@ -880,6 +880,28 @@ extern "C" {
     EMSCRIPTEN_KEEPALIVE int getN() { return gApp.orb->n; }
     EMSCRIPTEN_KEEPALIVE int getL() { return gApp.orb->l; }
     EMSCRIPTEN_KEEPALIVE int getM() { return gApp.orb->m; }
+
+    EMSCRIPTEN_KEEPALIVE void resizeViewport(int width, int height) {
+        glViewport(0, 0, width, height);
+        if (gApp.camera) {
+            // Update the camera aspect ratio dynamically to match the device aspect ratio
+            gApp.camera->aspectRatio = (float)width / (float)height;
+            // If your camera has a specific matrix update function, call it here:
+            // gApp.camera->updateProjection();
+        }
+    }
+
+    EMSCRIPTEN_KEEPALIVE void rotateCamera(float dx, float dy) {
+        // Map touch drag deltas directly to your camera's orbital angles.
+        // Change 'theta'/'phi' or 'yaw'/'pitch' to match your camera struct's variables.
+        float sensitivity = 0.005f;
+        gApp.camera->theta -= dx * sensitivity; 
+        gApp.camera->phi   -= dy * sensitivity;
+
+        // Keep the camera from flipping upside down at the poles
+        if (gApp.camera->phi < 0.01f) gApp.camera->phi = 0.01f;
+        if (gApp.camera->phi > M_PI - 0.01f) gApp.camera->phi = M_PI - 0.01f;
+    }
 }
 #endif
 
