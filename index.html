@@ -123,26 +123,18 @@
         console.warn('resizeViewport not exported — rebuild with full EXPORTED_FUNCTIONS');
     } else {
     function adaptCanvasResolution() {
-        const dpr = Math.min(window.devicePixelRatio || 1, 2); // cap at 2x
-        const w = window.innerWidth * dpr;
-        const h = window.innerHeight * dpr;
-
-        const gl = Module.canvas.getContext('webgl2');
-        if (gl) {
-            const maxSize = gl.getParameter(gl.MAX_RENDERBUFFER_SIZE);
-            const safeW = Math.min(w, maxSize);
-            const safeH = Math.min(h, maxSize);
-            Module.canvas.width = safeW;
-            Module.canvas.height = safeH;
-            resizeViewport(safeW, safeH);
-        } else {
-            Module.canvas.width = w;
-            Module.canvas.height = h;
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const w = Math.floor(window.innerWidth * dpr);
+        const h = Math.floor(window.innerHeight * dpr);
+        Module.canvas.width = w;
+        Module.canvas.height = h;
+        if (Module.ctx) {
             resizeViewport(w, h);
         }
-}
+    }
+
         window.addEventListener('resize', adaptCanvasResolution);
-        adaptCanvasResolution();
+        setTimeout(adaptCanvasResolution, 100);
     }
 
     const sliderN = document.getElementById('slider-n');
