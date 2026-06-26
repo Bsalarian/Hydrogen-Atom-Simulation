@@ -123,17 +123,17 @@ uniform bool uCutaway;
 out vec4 fragColor;
 
 void main() {
-    // 1. Onion Slice Logic
+    
     if (uCutaway && fragPos.x > 0.0) discard;
 
     vec3 N = normalize(fragNormal);
     vec3 L = normalize(lightPos - fragPos);
     vec3 V = normalize(viewPos - fragPos);
 
-    // 2. Wrap-Lambert Lighting (Fixes the "wonky" hard shadows, makes it soft)
+    
     float diff = dot(N, L) * 0.5 + 0.5;
     
-    // 3. Fresnel Gloss (Smooth pearl look)
+    
     float fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.0);
     vec3 rim = mix(particleColor, vec3(1.0), 0.5) * fresnel;
 
@@ -147,7 +147,7 @@ void main() {
 static const char* VERT_POINT = R"glsl(#version 300 es
 precision highp float;
  
-layout(location = 2) in vec3 aInstancePos;   // Reusing buffer locations
+layout(location = 2) in vec3 aInstancePos;
 layout(location = 3) in vec3 aInstanceColor;
  
 uniform mat4 view;
@@ -162,7 +162,6 @@ void main() {
     vec4 viewPos = view * vec4(aInstancePos, 1.0);
     gl_Position = projection * viewPos;
     
-    // Scale mist particles by distance
     gl_PointSize = (uScale * 150.0) / -viewPos.z; 
     particleColor = aInstanceColor;
 }
@@ -178,7 +177,6 @@ uniform bool uCutaway;
 out vec4 fragColor;
 
 void main() {
-    // 1. Onion Slice Logic
     if (uCutaway && fragPos.x > 0.0) discard;
 
     vec2 pt = gl_PointCoord - vec2(0.5);
@@ -186,7 +184,6 @@ void main() {
     
     if (r2 > 0.25) discard;
     
-    // Soft Gaussian glow
     float glow = exp(-12.0 * r2);
     fragColor = vec4(particleColor * glow * 1.5, glow * 0.15); // Low alpha for fluid stacking
 }
@@ -739,6 +736,7 @@ int  N = 40000;
     bool trigger_resample = true;   
     ParticleSystem* ps = nullptr;
     float dt = 0.025f;
+    bool cutaway = false;
 };
 
 
@@ -852,7 +850,6 @@ struct AppState {
 static AppState gApp;
 
 
-
 #ifdef __EMSCRIPTEN__
 extern "C" {
     EMSCRIPTEN_KEEPALIVE void setN(int n) {
@@ -870,6 +867,9 @@ extern "C" {
         clampQuantumNumbers(*gApp.orb);
         gApp.orb->trigger_resample = true;
     }
+    EMSCRIPTEN_KEEPALIVE void setCutaway(int state) {
+        gApp.orb->cutaway = (state != 0);
+    }
     EMSCRIPTEN_KEEPALIVE void setParticleCount(int N) {
         gApp.orb->N = N;
         gApp.orb->trigger_resample = true;
@@ -883,28 +883,26 @@ extern "C" {
 
     EMSCRIPTEN_KEEPALIVE void resizeViewport(int width, int height) {
         glViewport(0, 0, width, height);
-        if (gApp.camera) {
-            // Update the camera aspect ratio dynamically to match the device aspect ratio
-            gApp.camera->aspectRatio = (float)width / (float)height;
-            // If your camera has a specific matrix update function, call it here:
-            // gApp.camera->updateProjection();
-        }
     }
 
     EMSCRIPTEN_KEEPALIVE void rotateCamera(float dx, float dy) {
-        // Map touch drag deltas directly to your camera's orbital angles.
-        // Change 'theta'/'phi' or 'yaw'/'pitch' to match your camera struct's variables.
-        float sensitivity = 0.005f;
-        gApp.camera->theta -= dx * sensitivity; 
-        gApp.camera->phi   -= dy * sensitivity;
+        if (!gApp.camera) return;
+        
+        gApp.camera->azimuth   -= dx * gApp.camera->orbitSpeed; 
+        gApp.camera->elevation += dy * gApp.camera->orbitSpeed;
 
-        // Keep the camera from flipping upside down at the poles
-        if (gApp.camera->phi < 0.01f) gApp.camera->phi = 0.01f;
-        if (gApp.camera->phi > M_PI - 0.01f) gApp.camera->phi = M_PI - 0.01f;
+        gApp.camera->elevation = glm::clamp(gApp.camera->elevation, 0.01f, (float)M_PI - 0.01f);
+    }
+
+    EMSCRIPTEN_KEEPALIVE void zoomCamera(float delta) {
+        if (!gApp.camera) return;
+        
+        gApp.camera->radius -= delta * gApp.camera->radius * 0.1f;
+        if (gApp.camera->radius < 0.5f) gApp.camera->radius = 0.5f;
+        if (gApp.camera->radius > 300.0f) gApp.camera->radius = 300.0f;
     }
 }
 #endif
-
 static void mainLoopIteration() {
     glfwPollEvents();
 
@@ -926,6 +924,7 @@ static void mainLoopIteration() {
     glUniformMatrix4fv(glGetUniformLocation(gApp.engine->shaderSphere, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
     glUniform3fv(glGetUniformLocation(gApp.engine->shaderSphere, "lightPos"), 1, glm::value_ptr(gApp.lightPos));
     glUniform3fv(glGetUniformLocation(gApp.engine->shaderSphere, "viewPos"), 1, glm::value_ptr(gApp.camera->position()));
+    glUniform1i(glGetUniformLocation(gApp.engine->shaderSphere, "uCutaway"), gApp.orb->cutaway ? 1 : 0);
 
     float pulse = 0.45f + 0.1f * sin((float)glfwGetTime() * 2.0f);
     float protonScale = 0.1f + pulse * 0.15f;
