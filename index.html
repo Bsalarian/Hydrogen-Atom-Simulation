@@ -39,7 +39,22 @@
         #info-toggle { background: none; border: 1px solid #45b6fe; color: #45b6fe; padding: 6px; border-radius: 4px; width: 100%; margin-top: 10px; font-size: 0.75rem; font-weight: bold; cursor: pointer; }
         #info-content { display: none; margin-top: 10px; font-size: 0.7rem; color: #aaa; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px; line-height: 1.4; }
         #info-content strong { color: #ddd; }
+        
 
+        #ui-panel {
+        position: absolute; top: 10px; left: 10px; background: rgba(15, 23, 30, 0.8);
+        padding: 12px; border-radius: 6px; backdrop-filter: blur(8px);
+        border: 1px solid rgba(255,255,255,0.1); width: 220px; z-index: 10;
+        touch-action: auto; 
+    }
+
+        input[type=range] { 
+            width: 100%; 
+            height: 12px;
+            margin: 6px 0; 
+            cursor: pointer; 
+            accent-color: #45b6fe; 
+    }  
         @media (max-width: 600px) { 
             #ui-panel { width: 180px; padding: 8px; top: 5px; left: 5px; } 
             #intro-overlay h1 { font-size: 1.6rem; }
