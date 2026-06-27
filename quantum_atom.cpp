@@ -731,7 +731,7 @@ struct ParticleSystem {
 // =====================================================
 
 struct OrbitalState {
-    int  n = 4, l = 1, m = 0;
+    int  n = 4, l = 2, m = 1;
 int  N = 40000;
     bool trigger_resample = true;   
     ParticleSystem* ps = nullptr;
@@ -964,7 +964,7 @@ int main() {
 
  
     glm::vec3 lightPos(50.f, 50.f, 50.f);
-    particles.sampleWaveFunctionCDF(4, 2, 1, 40000 , 1.0);
+    // particles.sampleWaveFunctionCDF(4, 2, 1, 40000 , 1.0);
 
 #ifdef __EMSCRIPTEN__
     // 0 = use requestAnimationFrame rate (60fps)
