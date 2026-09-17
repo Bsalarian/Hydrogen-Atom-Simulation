@@ -854,28 +854,34 @@ static AppState gApp;
 #ifdef __EMSCRIPTEN__
 extern "C" {
     EMSCRIPTEN_KEEPALIVE void setN(int n) {
+        if (!gApp.orb) return; 
         gApp.orb->n = n;
         clampQuantumNumbers(*gApp.orb);
         gApp.orb->trigger_resample = true;
     }
     EMSCRIPTEN_KEEPALIVE void setL(int l) {
+        if (!gApp.orb) return;
         gApp.orb->l = l;
         clampQuantumNumbers(*gApp.orb);
         gApp.orb->trigger_resample = true;
     }
     EMSCRIPTEN_KEEPALIVE void setM(int m) {
+        if (!gApp.orb) return;
         gApp.orb->m = m;
         clampQuantumNumbers(*gApp.orb);
         gApp.orb->trigger_resample = true;
     }
     EMSCRIPTEN_KEEPALIVE void setCutaway(int state) {
+        if (!gApp.orb) return;
         gApp.orb->cutaway = (state != 0);
     }
     EMSCRIPTEN_KEEPALIVE void setParticleCount(int N) {
+        if (!gApp.orb) return;
         gApp.orb->N = N;
         gApp.orb->trigger_resample = true;
     }
     EMSCRIPTEN_KEEPALIVE void setSpeed(float dt) {
+        if (!gApp.orb) return;
         gApp.orb->dt = dt;
     }
     EMSCRIPTEN_KEEPALIVE int getN() { return gApp.orb->n; }
@@ -883,6 +889,9 @@ extern "C" {
     EMSCRIPTEN_KEEPALIVE int getM() { return gApp.orb->m; }
 
     EMSCRIPTEN_KEEPALIVE void resizeViewport(int width, int height) {
+        if (gApp.engine && gApp.engine->window) {
+            glfwSetWindowSize(gApp.engine->window, width, height);
+        }
         glViewport(0, 0, width, height);
     }
 
