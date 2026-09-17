@@ -126,11 +126,11 @@
         const h = Math.floor(window.innerHeight * dpr);
         Module.canvas.width = w;
         Module.canvas.height = h;
-        resizeViewport(w, h);
+        if (Module._resizeViewport) resizeViewport(w, h);
     }
 
     window.addEventListener('resize', adaptCanvasResolution);
-    adaptCanvasResolution();
+
 
     const sliderN = document.getElementById('slider-n');
     const sliderL = document.getElementById('slider-l');
