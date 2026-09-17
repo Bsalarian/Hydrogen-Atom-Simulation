@@ -242,6 +242,7 @@ static Mesh buildSphereMesh(float radius, int stacks, int sectors){
 
 struct Camera {
     float radius = 10.0f, azimuth = 0.0f, elevation = (float)M_PI / 2.0f;
+    float targetRadius = 10.0f; // Adding this for phone interfaces, no more snaps.
     float orbitSpeed = 0.005f; bool dragging = false; double lastX = 0, lastY = 0;
     glm::vec3 position() const {
         float e = glm::clamp(elevation, 0.01f, (float)M_PI - 0.01f);
@@ -258,8 +259,8 @@ struct Camera {
     }
     void onScroll(double, double dy) {
         float scrollDir = (dy > 0.0) ? 1.0f : ((dy < 0.0) ? -1.0f : 0.0f);
-        radius -= scrollDir * radius * 0.1f;
-        if (radius < 0.5f) radius = 0.5f; if (radius > 300.0f) radius = 300.0f;
+        targetRadius -= scrollDir * targetRadius * 0.1f;
+        targetRadius = glm::clamp(targetRadius, 0.5f, 300.0f);
     }
 };
 
@@ -896,10 +897,8 @@ extern "C" {
 
     EMSCRIPTEN_KEEPALIVE void zoomCamera(float delta) {
         if (!gApp.camera) return;
-        
-        gApp.camera->radius -= delta * gApp.camera->radius * 0.1f;
-        if (gApp.camera->radius < 0.5f) gApp.camera->radius = 0.5f;
-        if (gApp.camera->radius > 300.0f) gApp.camera->radius = 300.0f;
+        gApp.camera->targetRadius -= delta * gApp.camera->targetRadius * 0.1f;
+        gApp.camera->targetRadius = glm::clamp(gApp.camera->targetRadius, 0.5f, 300.0f);
     }
 }
 #endif
@@ -909,9 +908,10 @@ static void mainLoopIteration() {
     if (gApp.orb->trigger_resample) {
         gApp.particles->sampleWaveFunctionCDF(gApp.orb->n, gApp.orb->l, gApp.orb->m, gApp.orb->N);
         gApp.orb->trigger_resample = false;
-        gApp.camera->radius = (float)((gApp.orb->n * gApp.orb->n + 3.0 * gApp.orb->n)) * 2.6f;
+        gApp.camera->targetRadius = (float)((gApp.orb->n * gApp.orb->n + 3.0 * gApp.orb->n)) * 2.6f;
     }
 
+    gApp.camera->radius += (gApp.camera->targetRadius - gApp.camera->radius) * 0.05f;
     gApp.particles->updateProbabilityCurrent(gApp.orb->m, gApp.orb->dt);
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
