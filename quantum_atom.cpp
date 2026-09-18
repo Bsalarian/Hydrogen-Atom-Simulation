@@ -720,6 +720,7 @@ struct ParticleSystem {
             if (m_quantum == 0) return;  
             for (Particle& p : particles) {
                 float sinTheta = std::max(std::sin(p.theta), 1e-4f);
+                // Should be r2 sin2theta, but that get's pretty crazy so lowered the power for visuals sake
                 p.phi += ((float)m_quantum / (p.r * sinTheta)) * dt;
                 p.pos = glm::vec3(p.r * std::sin(p.theta) * std::cos(p.phi), p.r * std::cos(p.theta), p.r * std::sin(p.theta) * std::sin(p.phi));
             }
