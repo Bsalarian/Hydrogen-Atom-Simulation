@@ -70,9 +70,9 @@
         <div class="intro-desc">
             <p>How does an atom really look?</p>
             <p>For a long time, we pictured the electron orbiting the nucleus like a planet circling the sun.</p>
-            <p>But that model was rejected when we discovered that the quantum universe behaves in far stranger ways.</p>
+            <p>But that model was rejected once we discovered that the quantum universe behaves in far stranger ways.</p>
             <p>You are looking at a <strong>Quantum Probability Cloud</strong>. According to the Schrödinger Equation, electrons exist as a fuzzy mathematical pattern of probability density.</p>
-            <p>Every pearl represents an optimal point where an electron is likely to materialize when observed. The swirling flow represents the <strong>Probability Current</strong>: a physical momentum wave configuration driven directly by the magnetic quantum numbers.</p>
+            <p>Every pearl represents a point where an electron is likely to be found when observed. The swirling flow is a stylized representation of the <strong>Probability Current</strong>: a circulation that orbitals with a non-zero magnetic number carry around their axis.</p>
         </div>
         <button class="btn-start" id="btn-start">Initialize Simulation</button>
     </div>
@@ -84,7 +84,7 @@
         
         <div class="control-group"><label><span>n (Energy Level)</span><span id="n-val">4</span></label><input type="range" id="slider-n" min="1" max="7" value="4"></div>
         <div class="control-group"><label><span>l (Orbital Shape)</span><span id="l-val">2</span></label><input type="range" id="slider-l" min="0" max="6" value="2"></div>
-        <div class="control-group"><label><span>m (Magnetic Spin)</span><span id="m-val">1</span></label><input type="range" id="slider-m" min="-6" max="6" value="1"></div>
+        <div class="control-group"><label><span>m (Magnetic Orientation)</span><span id="m-val">1</span></label><input type="range" id="slider-m" min="-6" max="6" value="1"></div>
         
         <hr style="border-top: 1px solid rgba(255,255,255,0.1); margin: 8px 0;">
         
@@ -95,13 +95,13 @@
         <hr style="border-top: 1px solid rgba(255,255,255,0.1); margin: 8px 0;">
 
         <div class="control-group"><label><span>Density (Particles)</span><span id="count-val">40k</span></label><input type="range" id="slider-count" min="5000" max="100000" step="5000" value="40000"></div>
-        <div class="control-group"><label><span>Time Step (dt)</span><span id="speed-val">1.0x</span></label><input type="range" id="slider-speed" min="0" max="0.1" step="0.001" value="0.016"></div>
+        <div class="control-group"><label><span>Flow Speed</span><span id="speed-val">1.0x</span></label><input type="range" id="slider-speed" min="0" max="0.1" step="0.001" value="0.016"></div>
 
         <button id="info-toggle">What am I looking at?</button>
         <div id="info-content">
-            <strong>n (Principal):</strong> Distance from the nucleus and structural energy tier shell.<br><br>
-            <strong>l (Azimuthal):</strong> Geometrical shape of the spatial node lobes (s, p, d, f). Maximum threshold matches n - 1.<br><br>
-            <strong>m (Magnetic):</strong> Orientation alignment coordinates across an outer magnetic axis workspace fields (-l to +l).
+            <strong>n (Principal):</strong> Distance from the nucleus and structural energy tier shell.Bigger n means a bigger, higher-energy cloud, further from the nucleus.<br><br>
+            <strong>l (Azimuthal):</strong> Geometrical shape of the spatial node lobes (sphere (s), dumbbell (p), cloverleaf (d), and other (f)). Must be less than N.<br><br>
+            <strong>m (Magnetic):</strong> Which way the shape points, and the direction of the probability current. (-l to +l).
         </div>
     </div>
 
