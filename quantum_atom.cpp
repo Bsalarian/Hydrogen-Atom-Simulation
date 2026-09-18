@@ -77,7 +77,7 @@ gl_Position=projection⋅view⋅model⋅vec4(aPos,1.0)
 #endif
 
 
-static const int SCR_W = 1800;
+static const int SCR_W = 1200;
 static const int SCR_H = 1200;
 
 
