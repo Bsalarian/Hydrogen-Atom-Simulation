@@ -737,7 +737,7 @@ struct OrbitalState {
 int  N = 40000;
     bool trigger_resample = true;   
     ParticleSystem* ps = nullptr;
-    float dt = 0.045f;
+    float dt = 0.075f;
     bool cutaway = false;
 };
 
