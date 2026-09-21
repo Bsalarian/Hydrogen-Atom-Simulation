@@ -200,14 +200,13 @@
             // Syncs state to C++
             function syncToEngine() {
                 updateUI();
-                if (Module.ccall) {
-                    setN(simState.n);
-                    setL(simState.l);
-                    setM(simState.m);
-                    setParticleCount(simState.count);
-                    setSpeed(simState.speed);
-                    setCutaway(simState.cutaway);
-                }
+                
+                setN(simState.n);
+                setL(simState.l);
+                setM(simState.m);
+                setParticleCount(simState.count);
+                setSpeed(simState.speed);
+                setCutaway(simState.cutaway);
             }
 
             // Button Event Listeners
