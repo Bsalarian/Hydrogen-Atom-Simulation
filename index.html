@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Quantum Hydrogen Orbital</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #0f171e; color: #fff; font-family: 'Segoe UI', sans-serif; touch-action: none; }
+        body { margin: 0; overflow: hidden; background-color: #0f171e; color: #fff; font-family: 'Segoe UI', sans-serif; touch-action: none; user-select: none; }
         canvas.emscripten { border: 0; background-color: #000; width: 100vw; height: 100vh; display: block; }
         
         #intro-overlay {
@@ -21,50 +21,52 @@
         .btn-start:hover { background: #6bc4ff; }
 
         #ui-panel {
-            position: absolute; top: 10px; left: 10px; background: rgba(15, 23, 30, 0.7);
-            padding: 10px; border-radius: 6px; backdrop-filter: blur(8px);
-            border: 1px solid rgba(255,255,255,0.1); width: 220px; z-index: 10;
+            position: absolute; top: 10px; left: 10px; background: rgba(15, 23, 30, 0.8);
+            padding: 12px; border-radius: 6px; backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.1); width: 260px; z-index: 10;
+            touch-action: auto; 
         }
         
-        .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-        #ui-panel h2 { margin: 0; font-size: 0.85rem; color: #45b6fe; text-transform: uppercase; }
+        .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        #ui-panel h2 { margin: 0; font-size: 0.9rem; color: #45b6fe; text-transform: uppercase; letter-spacing: 1px; }
         
-        #btn-music { background: none; border: 1px solid #45b6fe; color: #45b6fe; border-radius: 50%; width: 24px; height: 24px; font-size: 0.6rem; cursor: pointer; display: flex; align-items: center; justify-content: center;}
+        .control-group { margin-bottom: 12px; }
+        .control-group > label { display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: #ccc;}
         
-        .control-group { margin-bottom: 8px; }
-        label { display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; margin-bottom: 4px; color: #ccc;}
-        input[type=range] { width: 100%; height: 4px; margin: 0; cursor: pointer; accent-color: #45b6fe; }
-        input[type=checkbox] { accent-color: #45b6fe; }
+        /* Stepper Buttons for Mobile */
+        .stepper { display: flex; align-items: center; gap: 8px; }
+        .stepper button {
+            background: rgba(69, 182, 254, 0.1);
+            color: #45b6fe;
+            border: 1px solid rgba(69, 182, 254, 0.4);
+            border-radius: 4px;
+            width: 32px; height: 32px;
+            font-size: 1.2rem;
+            display: flex; justify-content: center; align-items: center;
+            cursor: pointer;
+            touch-action: manipulation; /* Fixes double-tap zoom delay */
+            user-select: none;
+        }
+        .stepper button:active { background: #45b6fe; color: #000; }
+        .stepper span { width: 34px; text-align: center; font-weight: bold; font-variant-numeric: tabular-nums; color: #fff;}
+
+        /* Checkbox styling */
+        .checkbox-label { display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: #ccc; cursor: pointer; padding: 4px 0;}
+        input[type=checkbox] { accent-color: #45b6fe; width: 18px; height: 18px; cursor: pointer;}
         
-        #info-toggle { background: none; border: 1px solid #45b6fe; color: #45b6fe; padding: 6px; border-radius: 4px; width: 100%; margin-top: 10px; font-size: 0.75rem; font-weight: bold; cursor: pointer; }
-        #info-content { display: none; margin-top: 10px; font-size: 0.7rem; color: #aaa; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px; line-height: 1.4; }
+        #info-toggle { background: none; border: 1px solid #45b6fe; color: #45b6fe; padding: 8px; border-radius: 4px; width: 100%; margin-top: 10px; font-size: 0.75rem; font-weight: bold; cursor: pointer; touch-action: manipulation; }
+        #info-content { display: none; margin-top: 10px; font-size: 0.75rem; color: #aaa; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px; line-height: 1.4; }
         #info-content strong { color: #ddd; }
         
-
-        #ui-panel {
-        position: absolute; top: 10px; left: 10px; background: rgba(15, 23, 30, 0.8);
-        padding: 12px; border-radius: 6px; backdrop-filter: blur(8px);
-        border: 1px solid rgba(255,255,255,0.1); width: 220px; z-index: 10;
-        touch-action: auto; 
-    }
-
-        input[type=range] { 
-            width: 100%; 
-            height: 12px;
-            margin: 6px 0; 
-            cursor: pointer; 
-            accent-color: #45b6fe; 
-    }  
         @media (max-width: 600px) { 
-            #ui-panel { width: 180px; padding: 8px; top: 5px; left: 5px; } 
+            #ui-panel { width: 240px; padding: 10px; top: 5px; left: 5px; } 
             #intro-overlay h1 { font-size: 1.6rem; }
             .intro-desc { font-size: 0.85rem; margin-bottom: 15px; }
+            .stepper button { width: 36px; height: 36px; } /* Slightly larger touch targets on phones */
         }
     </style>
 </head>
 <body>
-    <audio id="bg-music" loop src="ambient.mp3"></audio>
-
     <div id="intro-overlay">
         <h1>Hydrogen Atom Visualizer</h1>
         <div class="intro-desc">
@@ -80,178 +82,229 @@
     <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()"></canvas>
 
     <div id="ui-panel">
-        <div class="header-row"><h2>Parameters</h2><button id="btn-music">🎵</button></div>
-        
-        <div class="control-group"><label><span>n (Energy Level)</span><span id="n-val">4</span></label><input type="range" id="slider-n" min="1" max="7" value="4"></div>
-        <div class="control-group"><label><span>l (Orbital Shape)</span><span id="l-val">2</span></label><input type="range" id="slider-l" min="0" max="6" value="2"></div>
-        <div class="control-group"><label><span>m (Magnetic Orientation)</span><span id="m-val">1</span></label><input type="range" id="slider-m" min="-6" max="6" value="1"></div>
-        
-        <hr style="border-top: 1px solid rgba(255,255,255,0.1); margin: 8px 0;">
+        <div class="header-row"><h2>Parameters</h2></div>
         
         <div class="control-group">
-            <label><span>Cross-Section</span><input type="checkbox" id="check-cutaway"></label>
+            <label>
+                <span>n (Energy Level)</span>
+                <div class="stepper">
+                    <button id="n-dec">-</button><span id="n-val">4</span><button id="n-inc">+</button>
+                </div>
+            </label>
         </div>
+        <div class="control-group">
+            <label>
+                <span>l (Orbital Shape)</span>
+                <div class="stepper">
+                    <button id="l-dec">-</button><span id="l-val">2</span><button id="l-inc">+</button>
+                </div>
+            </label>
+        </div>
+        <div class="control-group">
+            <label>
+                <span>m (Magnetic Spin)</span>
+                <div class="stepper">
+                    <button id="m-dec">-</button><span id="m-val">1</span><button id="m-inc">+</button>
+                </div>
+            </label>
+        </div>
+        
+        <hr style="border-top: 1px solid rgba(255,255,255,0.1); margin: 12px 0;">
+        
+        <label class="checkbox-label">
+            <span>Cross-Section View</span>
+            <input type="checkbox" id="check-cutaway">
+        </label>
 
-        <hr style="border-top: 1px solid rgba(255,255,255,0.1); margin: 8px 0;">
+        <hr style="border-top: 1px solid rgba(255,255,255,0.1); margin: 12px 0;">
 
-        <div class="control-group"><label><span>Density (Particles)</span><span id="count-val">40k</span></label><input type="range" id="slider-count" min="5000" max="100000" step="5000" value="40000"></div>
-        <div class="control-group"><label><span>Flow Speed</span><span id="speed-val">1.0x</span></label><input type="range" id="slider-speed" min="0" max="0.1" step="0.001" value="0.016"></div>
+        <div class="control-group">
+            <label>
+                <span>Density (Particles)</span>
+                <div class="stepper">
+                    <button id="count-dec">-</button><span id="count-val">40k</span><button id="count-inc">+</button>
+                </div>
+            </label>
+        </div>
+        <div class="control-group">
+            <label>
+                <span>Flow Speed</span>
+                <div class="stepper">
+                    <button id="speed-dec">-</button><span id="speed-val">1.0x</span><button id="speed-inc">+</button>
+                </div>
+            </label>
+        </div>
 
         <button id="info-toggle">What am I looking at?</button>
         <div id="info-content">
-            <strong>n (Principal):</strong> Distance from the nucleus and structural energy tier shell.Bigger n means a bigger, higher-energy cloud, further from the nucleus.<br><br>
+            <strong>n (Principal):</strong> Distance from the nucleus and structural energy tier shell. Bigger n means a bigger, higher-energy cloud, further from the nucleus.<br><br>
             <strong>l (Azimuthal):</strong> Geometrical shape of the spatial node lobes (sphere (s), dumbbell (p), cloverleaf (d), and other (f)). Must be less than N.<br><br>
             <strong>m (Magnetic):</strong> Which way the shape points, and the direction of the probability current. (-l to +l).
         </div>
     </div>
 
     <script>
+    // Centralized State Object (Matches C++ Defaults)
+    let simState = {
+        n: 4,
+        l: 2,
+        m: 1,
+        count: 40000,
+        speed: 0.016,
+        cutaway: 0
+    };
+
     var Module = {
-    canvas: document.getElementById('canvas'),
-    onRuntimeInitialized: function() {
-        const setN = Module.cwrap('setN', 'null', ['number']);
-        const setL = Module.cwrap('setL', 'null', ['number']);
-        const setM = Module.cwrap('setM', 'null', ['number']);
-        const setParticleCount = Module.cwrap('setParticleCount', 'null', ['number']);
-        const setSpeed = Module.cwrap('setSpeed', 'null', ['number']);
-        const zoomCamera = Module.cwrap('zoomCamera', 'null', ['number']); 
-        const setCutaway = Module.cwrap('setCutaway', 'null', ['number']);
-        const resizeViewport = Module.cwrap('resizeViewport', 'null', ['number', 'number']);
-        const rotateCamera = Module.cwrap('rotateCamera', 'null', ['number', 'number']);
+        canvas: document.getElementById('canvas'),
+        onRuntimeInitialized: function() {
+            // Bind C++ functions
+            const setN = Module.cwrap('setN', 'null', ['number']);
+            const setL = Module.cwrap('setL', 'null', ['number']);
+            const setM = Module.cwrap('setM', 'null', ['number']);
+            const setParticleCount = Module.cwrap('setParticleCount', 'null', ['number']);
+            const setSpeed = Module.cwrap('setSpeed', 'null', ['number']);
+            const zoomCamera = Module.cwrap('zoomCamera', 'null', ['number']); 
+            const setCutaway = Module.cwrap('setCutaway', 'null', ['number']);
+            const resizeViewport = Module.cwrap('resizeViewport', 'null', ['number', 'number']);
+            const rotateCamera = Module.cwrap('rotateCamera', 'null', ['number', 'number']);
 
-
-    function adaptCanvasResolution() {
-        const dpr = Math.min(window.devicePixelRatio || 1, 2);
-        const w = Math.floor(window.innerWidth * dpr);
-        const h = Math.floor(window.innerHeight * dpr);
-        Module.canvas.width = w;
-        Module.canvas.height = h;
-        if (Module._resizeViewport) resizeViewport(w, h);
-    }
-
-    window.addEventListener('resize', adaptCanvasResolution);
-
-
-    const sliderN = document.getElementById('slider-n');
-    const sliderL = document.getElementById('slider-l');
-    const sliderM = document.getElementById('slider-m');
-
-    function enforceQuantumRules() {
-        let n = parseInt(sliderN.value);
-        let l = parseInt(sliderL.value);
-        let m = parseInt(sliderM.value);
-        sliderL.max = n - 1;
-        if (l > n - 1) { l = n - 1; sliderL.value = l; }
-        sliderM.min = -l; sliderM.max = l;
-        if (m > l) { m = l; sliderM.value = m; }
-        else if (m < -l) { m = -l; sliderM.value = m; }
-        document.getElementById('n-val').innerText = n;
-        document.getElementById('l-val').innerText = l;
-        document.getElementById('m-val').innerText = m;
-    }
-
-    function sendQuantumNumbersToEngine() {
-        setN(parseInt(sliderN.value));
-        setL(parseInt(sliderL.value));
-        setM(parseInt(sliderM.value));
-    }
-
-    function enforceAndSend() {
-        enforceQuantumRules();
-        sendQuantumNumbersToEngine();
-    }
-
-    sliderN.addEventListener('input', enforceAndSend);
-    sliderL.addEventListener('input', enforceAndSend);
-    sliderM.addEventListener('input', enforceAndSend);
-        document.getElementById('slider-count').addEventListener('change', (e) => { 
-            let val = parseInt(e.target.value); 
-            document.getElementById('count-val').innerText = (val/1000)+'k'; 
-            setParticleCount(val); 
-        });
-        document.getElementById('slider-speed').addEventListener('input', (e) => { 
-            let val = parseFloat(e.target.value); 
-            document.getElementById('speed-val').innerText = (val/0.016).toFixed(1)+'x'; 
-            setSpeed(val); 
-        });
-        document.getElementById('check-cutaway').addEventListener('change', (e) => { 
-            setCutaway(e.target.checked ? 1 : 0); 
-        });
-
-        enforceQuantumRules();
-
-        let initialPinchDistance = null;
-        let lastTouchX = 0, lastTouchY = 0;
-        let isDragging = false;
-
-        Module.canvas.addEventListener('touchstart', (e) => {
-            if (e.touches.length === 1) {
-                isDragging = true;
-                lastTouchX = e.touches[0].clientX;
-                lastTouchY = e.touches[0].clientY;
-            } else if (e.touches.length === 2) {
-                isDragging = false;
-                initialPinchDistance = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+            function adaptCanvasResolution() {
+                const dpr = Math.min(window.devicePixelRatio || 1, 2);
+                const w = Math.floor(window.innerWidth * dpr);
+                const h = Math.floor(window.innerHeight * dpr);
+                Module.canvas.width = w;
+                Module.canvas.height = h;
+                if (Module._resizeViewport) resizeViewport(w, h);
             }
-        }, {passive: false});
-        
-        Module.canvas.addEventListener('touchmove', (e) => {
-            if (e.target === Module.canvas) {
-                e.preventDefault();
+
+            window.addEventListener('resize', adaptCanvasResolution);
+
+            // Logic to enforce quantum rules and update UI text
+            function updateUI() {
+                // Clamp limits
+                if (simState.n < 1) simState.n = 1;
+                if (simState.n > 7) simState.n = 7;
+                if (simState.l < 0) simState.l = 0;
+                if (simState.l > simState.n - 1) simState.l = simState.n - 1;
+                if (simState.m < -simState.l) simState.m = -simState.l;
+                if (simState.m > simState.l) simState.m = simState.l;
+
+                // Update text elements
+                document.getElementById('n-val').innerText = simState.n;
+                document.getElementById('l-val').innerText = simState.l;
+                document.getElementById('m-val').innerText = simState.m;
+                document.getElementById('count-val').innerText = (simState.count / 1000) + 'k';
+                document.getElementById('speed-val').innerText = (simState.speed / 0.016).toFixed(1) + 'x';
             }
-            
-            if (e.touches.length === 1 && isDragging) {
-                let dx = e.touches[0].clientX - lastTouchX;
-                let dy = e.touches[0].clientY - lastTouchY;
-                rotateCamera(dx, dy);
-                lastTouchX = e.touches[0].clientX;
-                lastTouchY = e.touches[0].clientY;
-            } else if (e.touches.length === 2 && initialPinchDistance !== null) {
-                let currentDistance = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-                let diff = initialPinchDistance - currentDistance; 
-                if (Math.abs(diff) > 2) { 
-                    zoomCamera(diff > 0 ? -1.2 : 1.2); 
-                    initialPinchDistance = currentDistance; 
+
+            // Syncs state to C++
+            function syncToEngine() {
+                updateUI();
+                if (Module.ccall) {
+                    setN(simState.n);
+                    setL(simState.l);
+                    setM(simState.m);
+                    setParticleCount(simState.count);
+                    setSpeed(simState.speed);
+                    setCutaway(simState.cutaway);
                 }
             }
-        }, {passive: false});
 
-        Module.canvas.addEventListener('touchend', () => { isDragging = false; initialPinchDistance = null; });
-        Module.canvas.addEventListener('touchcancel', () => { isDragging = false; initialPinchDistance = null; });
-    }
-};
+            // Button Event Listeners
+            document.getElementById('n-inc').addEventListener('click', () => { simState.n++; syncToEngine(); });
+            document.getElementById('n-dec').addEventListener('click', () => { simState.n--; syncToEngine(); });
 
-document.getElementById('info-toggle').addEventListener('click', () => {
-    const el = document.getElementById('info-content'); el.style.display = el.style.display === 'block' ? 'none' : 'block';
-});
+            document.getElementById('l-inc').addEventListener('click', () => { simState.l++; syncToEngine(); });
+            document.getElementById('l-dec').addEventListener('click', () => { simState.l--; syncToEngine(); });
 
-document.getElementById('btn-start').addEventListener('click', () => {
-    document.getElementById('intro-overlay').classList.add('hidden');
-    const bgMusic = document.getElementById('bg-music');
-    bgMusic.volume = 0.4;
-    bgMusic.play().catch(err => console.log("Audio deferred"));
-    document.getElementById('btn-music').innerText = '⏸';
-});
+            document.getElementById('m-inc').addEventListener('click', () => { simState.m++; syncToEngine(); });
+            document.getElementById('m-dec').addEventListener('click', () => { simState.m--; syncToEngine(); });
 
-const bgMusic = document.getElementById('bg-music');
-document.getElementById('btn-music').addEventListener('click', (e) => {
-    if (bgMusic.paused) { bgMusic.play(); e.target.innerText = '⏸'; } 
-    else { bgMusic.pause(); e.target.innerText = '🎵'; }
-});
+            document.getElementById('count-inc').addEventListener('click', () => { simState.count = Math.min(100000, simState.count + 5000); syncToEngine(); });
+            document.getElementById('count-dec').addEventListener('click', () => { simState.count = Math.max(5000, simState.count - 5000); syncToEngine(); });
 
-window.addEventListener('load', () => {
-    setTimeout(() => {
-        const dpr = Math.min(window.devicePixelRatio || 1, 2);
-        const w = Math.floor(window.innerWidth * dpr);
-        const h = Math.floor(window.innerHeight * dpr);
-        const canvas = document.getElementById('canvas');
-        canvas.width = w;
-        canvas.height = h;
-        if (Module && Module._resizeViewport) {
-            Module._resizeViewport(w, h);
+            document.getElementById('speed-inc').addEventListener('click', () => { simState.speed = Math.min(0.1, simState.speed + 0.016); syncToEngine(); });
+            document.getElementById('speed-dec').addEventListener('click', () => { simState.speed = Math.max(0, simState.speed - 0.016); syncToEngine(); });
+
+            document.getElementById('check-cutaway').addEventListener('change', (e) => { 
+                simState.cutaway = e.target.checked ? 1 : 0; 
+                syncToEngine();
+            });
+
+            // Mobile Touch Controls for Camera
+            let initialPinchDistance = null;
+            let lastTouchX = 0, lastTouchY = 0;
+            let isDragging = false;
+
+            Module.canvas.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 1) {
+                    isDragging = true;
+                    lastTouchX = e.touches[0].clientX;
+                    lastTouchY = e.touches[0].clientY;
+                } else if (e.touches.length === 2) {
+                    isDragging = false;
+                    initialPinchDistance = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+                }
+            }, {passive: false});
+            
+            Module.canvas.addEventListener('touchmove', (e) => {
+                if (e.target === Module.canvas) {
+                    e.preventDefault();
+                }
+                
+                if (e.touches.length === 1 && isDragging) {
+                    let dx = e.touches[0].clientX - lastTouchX;
+                    let dy = e.touches[0].clientY - lastTouchY;
+                    rotateCamera(dx, dy);
+                    lastTouchX = e.touches[0].clientX;
+                    lastTouchY = e.touches[0].clientY;
+                } else if (e.touches.length === 2 && initialPinchDistance !== null) {
+                    let currentDistance = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+                    let diff = initialPinchDistance - currentDistance; 
+                    if (Math.abs(diff) > 2) { 
+                        zoomCamera(diff > 0 ? -1.2 : 1.2); 
+                        initialPinchDistance = currentDistance; 
+                    }
+                }
+            }, {passive: false});
+
+            Module.canvas.addEventListener('touchend', () => { isDragging = false; initialPinchDistance = null; });
+            Module.canvas.addEventListener('touchcancel', () => { isDragging = false; initialPinchDistance = null; });
+            
+            // Expose sync function to the window so the 500ms loader can call it
+            window.syncToEngine = syncToEngine;
         }
-    }, 500);
-});
+    };
+
+    // UI Toggles
+    document.getElementById('info-toggle').addEventListener('click', () => {
+        const el = document.getElementById('info-content'); el.style.display = el.style.display === 'block' ? 'none' : 'block';
+    });
+
+    document.getElementById('btn-start').addEventListener('click', () => {
+        document.getElementById('intro-overlay').classList.add('hidden');
+    });
+
+    // Boot Sequence
+    window.addEventListener('load', () => {
+        setTimeout(() => {
+            // 1. Force Canvas Size
+            const dpr = Math.min(window.devicePixelRatio || 1, 2);
+            const w = Math.floor(window.innerWidth * dpr);
+            const h = Math.floor(window.innerHeight * dpr);
+            const canvas = document.getElementById('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            if (Module && Module._resizeViewport) {
+                Module._resizeViewport(w, h);
+            }
+            
+            // 2. Force the UI buttons to push the 4,2,1 state into the C++ engine
+            if (window.syncToEngine) {
+                window.syncToEngine();
+            }
+        }, 500);
+    });
     </script>
     <script async type="text/javascript" src="index.js"></script>
 </body>
