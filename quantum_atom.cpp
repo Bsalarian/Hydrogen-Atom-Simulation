@@ -99,12 +99,16 @@ uniform float uScale;
 out vec3 fragPos;    
 out vec3 fragNormal;
 out vec3 particleColor; 
+out float viewDepth;
  
 void main() {
     vec3 worldPos = (aPos * uScale) + aInstancePos;
     fragPos    = worldPos;
     fragNormal = aNormal;
     particleColor = aInstanceColor;
+
+    vec4 vp = view * vec4(worldPos, 1.0);
+    viewDepth = -vp.z;
     gl_Position = projection * view * vec4(worldPos, 1.0);
 }
 )glsl";
@@ -469,7 +473,7 @@ struct ParticleSystem {
         // Exponential $e^{-\rho / 2}$ to make sure the wf decays to 0 when far
         // The Laguerre polynomial L for generating alternating peaks and valleys of density.
 
-        double rho = (2.0 * r) /n; // for a0=1.0 aka hydrogen
+        double rho = (2.0 * r * Z) /n; // for a0=1.0 aka hydrogen
         // https://en.wikipedia.org/wiki/Gamma_function Gamma (x+1 interpolates the factorial function to non-integer values.
         double constant = std::sqrt( std::pow(2.0 / n , 3) * (std::tgamma(n - l) / ( 2.0 * n * std::tgamma(n+l+1)))); 
         double radial = constant * std::exp(-rho / 2.0) * std::pow(rho ,l) * assocLaguerre(n-l-1 , 2.0 * l +1 , rho);
@@ -737,7 +741,7 @@ struct OrbitalState {
 int  N = 40000;
     bool trigger_resample = true;   
     ParticleSystem* ps = nullptr;
-    float dt = 0.075f;
+    float dt = 0.085f;
     bool cutaway = false;
 };
 
