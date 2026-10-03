@@ -4,7 +4,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-static double sphLegendre(int l, int m, double theta) {
+double sphLegendre(int l, int m, double theta) {
     double cosT = std::cos(theta); double sinT = std::sin(theta);
     double Pmm = 1.0; double factor = 1.0;
     for (int i = 1; i <= m; ++i) { Pmm *= -factor * sinT; factor += 2.0; }
@@ -40,7 +40,7 @@ Uses the standard 3-term recurrence:
     L_k = ((2k-1+alpha-x)*L_{k-1} - (k-1+alpha)*L_{k-2}) / k
 
 */
-static double assocLaguerre(int n, double alpha, double x) {
+double assocLaguerre(int n, double alpha, double x) {
     if (n == 0) return 1.0; if (n == 1) return 1.0 + alpha - x;
     double L0 = 1.0, L1 = 1.0 + alpha - x, Lk = 0.0;
     for (int k = 2; k <= n; ++k) {
