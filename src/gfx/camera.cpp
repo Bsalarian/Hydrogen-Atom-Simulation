@@ -1,12 +1,6 @@
-#include "gfx/camera.h"
-#include <GLFW/glfw3.h> 
-#include <glm/gtc/matrix_transform.hpp>
-#include <cmath>
-
-
 // gfx/camera.cpp
 #include "gfx/camera.h"
-#include "gfx/gl.h"                    // real GLFW include lives in the .cpp
+#include "gfx/gl.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <cmath>
 

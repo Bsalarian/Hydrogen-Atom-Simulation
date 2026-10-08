@@ -1,5 +1,5 @@
 #pragma once
-#include <GLFW/glfw3.h>   // for GLuint
+#include "gfx/gl.h"
 
 struct Mesh {
     GLuint vao = 0, vbo = 0, ebo = 0;

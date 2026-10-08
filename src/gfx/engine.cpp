@@ -136,8 +136,7 @@ void Engine::drawParticles(const std::vector<Particle>& particles, float scale) 
     for (size_t i = 0; i < particles.size(); ++i) scratch[i] = particles[i].pos;
     uploadVec3(vboPos, scratch, posCapacity);
 
-    // Never draw more instances than we have colours for —
-    // reading past the end of an instance buffer is a GL error (or worse).
+    // don't draw more instances than we have colours for
     const GLsizei count = (GLsizei)std::min(particles.size(), colorCount);
     if (count == 0) return;
 
