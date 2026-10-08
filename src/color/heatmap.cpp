@@ -17,11 +17,11 @@ glm::vec3 heatmapInferno(float t) {
 
     t = glm::clamp(t, 0.0f, 1.0f);
     
-    for (int i = 0; i < colorCount; ++i) {
-        if (t >= stops[i].p && t <= stops[i + 1].p) {
+    for (int i = 0; i < colorCount - 1; ++i) {
+        if (t >= stops[i+1].p) {
             float local = (t - stops[i].p) / (stops[i + 1].p - stops[i].p);
             return glm::mix(stops[i].c, stops[i + 1].c, local);
         }
     }
-    return stops[colorCount].c;
+    return stops[colorCount - 1].c;
 }
